@@ -260,9 +260,9 @@ function generateWorld() {
   while (y < 3200) {
     const late = clamp(y / 1800, 0, 1);
     const spacing = rand(26, 56) - late * 8;
-    const green = rand(2.0, 4.1) - late * 0.25;
+    const green = rand(2.8, 5.2) - late * 0.2;
     const yellow = rand(0.85, 1.25);
-    const red = rand(1.25, 3.2);
+    const red = rand(1.05, 2.5);
     const pace = 18 + rand(-3, 4);
     const cyc = green + yellow + red;
     const synced = (y / pace) % cyc;
