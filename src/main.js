@@ -8,6 +8,7 @@ const ctx = canvas.getContext("2d");
 const audio = createAudio();
 
 const BEST_KEY = "stoplight-sim-best";
+const TOP_KEY = "stoplight-sim-tops";
 const RUN_SECONDS = 60;
 const MAX_SPEED = 34;
 const ACCEL = 16;
@@ -53,6 +54,10 @@ const els = {
   resultTitle: document.getElementById("result-title"),
   resultNew: document.getElementById("result-new"),
   resultFlavor: document.getElementById("result-flavor"),
+  resultHero: document.getElementById("result-hero"),
+  resultDist: document.getElementById("result-dist"),
+  resultHeroSub: document.getElementById("result-hero-sub"),
+  resultTops: document.getElementById("result-tops"),
   statDist: document.getElementById("stat-dist"),
   statLights: document.getElementById("stat-lights"),
   statBest: document.getElementById("stat-best"),
@@ -71,6 +76,11 @@ const els = {
   boardList: document.getElementById("board-list"),
   boardEmpty: document.getElementById("board-empty"),
   mute: document.getElementById("btn-mute"),
+  pause: document.getElementById("pause"),
+  btnPause: document.getElementById("btn-pause"),
+  btnResume: document.getElementById("btn-resume"),
+  btnRestart: document.getElementById("btn-restart"),
+  btnExit: document.getElementById("btn-exit"),
 };
 
 const flavorRed = [
@@ -82,10 +92,10 @@ const flavorRed = [
 ];
 
 const flavorTime = [
-  "Minute's up. That's the run.",
-  "You lived. Barely. That's a score.",
-  "Night shift over. Count it.",
-  "No reds. Just the clock.",
+  "Red never caught you. The clock did.",
+  "Sixty seconds. Zero tickets.",
+  "The lights blinked. You didn't.",
+  "The city let you keep this one.",
 ];
 
 const OMEN = {
@@ -147,6 +157,7 @@ const state = {
   omenAt: 0,
   disasterType: null,
   disasterT: 0,
+  resumeMode: null,
 };
 
 let width = 390;
@@ -175,6 +186,46 @@ function setBest(n) {
   const best = Math.max(getBest(), Math.round(n));
   localStorage.setItem(BEST_KEY, String(best));
   return best;
+}
+
+function getTops() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TOP_KEY) || "[]");
+    if (Array.isArray(raw) && raw.length) {
+      return raw.map(Number).filter((n) => n > 0).sort((a, b) => b - a).slice(0, 5);
+    }
+  } catch {
+    /* ignore */
+  }
+  const best = getBest();
+  if (best > 0) {
+    localStorage.setItem(TOP_KEY, JSON.stringify([best]));
+    return [best];
+  }
+  return [];
+}
+
+function recordTop(n) {
+  const dist = Math.round(n);
+  const prev = getTops();
+  const prevBest = prev[0] || 0;
+  if (dist <= 0) return { tops: prev, rank: 0, isNewBest: false };
+  const tagged = prev.map((d) => ({ d, cur: false }));
+  tagged.push({ d: dist, cur: true });
+  tagged.sort((a, b) => b.d - a.d || (a.cur ? -1 : 1));
+  const kept = tagged.slice(0, 5);
+  const tops = kept.map((row) => row.d);
+  localStorage.setItem(TOP_KEY, JSON.stringify(tops));
+  setBest(dist);
+  return {
+    tops,
+    rank: kept.findIndex((row) => row.cur) + 1,
+    isNewBest: dist > prevBest,
+  };
+}
+
+function ordinal(n) {
+  return n === 1 ? "1ST" : n === 2 ? "2ND" : n === 3 ? "3RD" : `${n}TH`;
 }
 
 function cycleOf(light) {
@@ -279,6 +330,7 @@ function resetRun(mode) {
   state.omenAt = 0;
   state.disasterType = null;
   state.disasterT = 0;
+  state.resumeMode = null;
 }
 
 const hideTimers = new WeakMap();
@@ -324,7 +376,7 @@ function rumble(pattern) {
 }
 
 function flashScreen(kind = "bad", ms = 280) {
-  els.flash.className = kind === "go" ? "go on" : kind === "good" ? "good on" : kind === "omen" ? "omen on" : "on";
+  els.flash.className = kind === "go" ? "go on" : kind === "good" ? "good on" : kind === "omen" ? "omen on" : kind === "best" ? "best on" : "on";
   setTimeout(() => {
     els.flash.className = "";
   }, ms);
@@ -341,7 +393,7 @@ function spark(x, y, { vx, vy, life = 0.4, size = 3, color = "#ff8a3d", g = 90 }
 }
 
 function rollOmen() {
-  if (Math.random() >= 0.01) {
+  if (Math.random() >= 0.02) {
     state.omen = null;
     state.omenAt = 0;
     return;
@@ -351,9 +403,11 @@ function rollOmen() {
 }
 
 function beginDisaster(type) {
-  if (state.mode === "title" || state.mode === "result" || state.mode === "crash" || state.mode === "disaster") return;
+  if (state.mode === "title" || state.mode === "result" || state.mode === "crash" || state.mode === "disaster" || state.mode === "pause") return;
   const kind = OMEN[type] ? type : pick(["meteor", "sinkhole", "tornado"]);
   if (state.mode === "countdown") hide(els.countdown);
+  hide(els.pause);
+  hide(els.btnPause);
   state.mode = "disaster";
   state.disasterType = kind;
   state.disasterT = 0;
@@ -393,10 +447,11 @@ function burst(kind, n = 10) {
 }
 
 let statTok = new WeakMap();
-function countUp(el, to, suffix = "", dur = 620) {
+function countUp(el, to, suffix = "", dur = 620, onDone) {
   const target = Math.round(to);
   if (REDUCE) {
     el.textContent = `${target}${suffix}`;
+    if (onDone) onDone();
     return;
   }
   const id = (statTok.get(el) || 0) + 1;
@@ -408,6 +463,7 @@ function countUp(el, to, suffix = "", dur = 620) {
     const eased = 1 - (1 - t) ** 3;
     el.textContent = `${Math.round(target * eased)}${suffix}`;
     if (t < 1) requestAnimationFrame(tickStat);
+    else if (onDone) onDone();
   };
   requestAnimationFrame(tickStat);
 }
@@ -503,6 +559,8 @@ function integrate(dt) {
 
 function crash(light) {
   if (state.mode !== "play") return;
+  hide(els.pause);
+  hide(els.btnPause);
   state.mode = "crash";
   state.crashLight = light;
   state.crashT = 0;
@@ -516,44 +574,125 @@ function crash(light) {
   setTimeout(() => endRun("red"), 780);
 }
 
+function celebrateTop(rank) {
+  if (REDUCE) return;
+  const n = rank === 1 ? 46 : rank ? 22 : 0;
+  const colors = rank === 1
+    ? ["#ffc01a", "#f4efe4", "#22e38a", "#ff8a3d"]
+    : ["#ffc01a", "#f4efe4", "#22e38a"];
+  for (let i = 0; i < n; i++) {
+    spark(width / 2 + rand(-50, 50), height * 0.38 + rand(-20, 20), {
+      vx: rand(-160, 160),
+      vy: rand(-260, -40),
+      life: rand(0.55, 1.2),
+      size: rand(2, 5.5),
+      color: pick(colors),
+      g: 200,
+    });
+  }
+  rumble(rank === 1 ? [20, 40, 30, 70] : [16, 24, 18]);
+}
+
+function renderTops(tops, rank) {
+  els.resultTops.innerHTML = "";
+  for (let i = 0; i < 5; i++) {
+    const li = document.createElement("li");
+    const dist = tops[i];
+    li.style.animationDelay = REDUCE ? "0s" : `${0.22 + i * 0.08}s`;
+    if (dist == null) {
+      li.className = "empty";
+      li.innerHTML = `<span class="rank">${ordinal(i + 1)}</span><span class="meters">—</span>`;
+    } else {
+      if (i === 0) li.classList.add("gold");
+      if (rank === i + 1) li.classList.add("now");
+      li.innerHTML = `<span class="rank">${ordinal(i + 1)}</span><span class="meters">${dist} m</span>`;
+    }
+    els.resultTops.appendChild(li);
+  }
+}
+
 function endRun(reason) {
   if (state.mode === "result") return;
   const dist = Math.round(state.carY);
-  const prevBest = getBest();
-  const best = setBest(dist);
-  const isNew = dist > prevBest;
+  const rec = recordTop(dist);
+  const best = getBest();
+  const omen = OMEN[reason];
+  const red = reason === "red";
+  const timed = !red && !omen;
   state.mode = "result";
   state.lastRun = { distance: dist, lights: state.cleared, reason };
   hide(els.hud);
   hide(els.pedalWrap);
   hide(els.countdown);
+  hide(els.pause);
+  hide(els.btnPause);
   show(els.result);
   show(els.authBar);
-  const omen = OMEN[reason];
-  const red = reason === "red";
+  els.result.classList.toggle("is-time", timed);
+  els.resultHero.classList.remove("punch", "is-best");
+  els.resultNew.classList.remove("place");
+
   if (omen) {
     els.resultKicker.textContent = omen.kicker;
     els.resultTitle.textContent = omen.title;
     els.resultTitle.className = "omen";
     els.resultFlavor.textContent = pick(omen.flavor);
+    show(els.resultTitle);
+    hide(els.resultHero);
+    hide(els.resultHeroSub);
+    hide(els.resultTops);
+  } else if (red) {
+    els.resultKicker.textContent = "YOU RAN IT";
+    els.resultTitle.textContent = "CAUGHT RED";
+    els.resultTitle.className = "bad";
+    els.resultFlavor.textContent = pick(flavorRed);
+    show(els.resultTitle);
+    hide(els.resultHero);
+    hide(els.resultHeroSub);
+    hide(els.resultTops);
   } else {
-    els.resultKicker.textContent = red ? "YOU RAN IT" : "SHIFT OVER";
-    els.resultTitle.textContent = red ? "CAUGHT RED" : "TIME";
-    els.resultTitle.className = red ? "bad" : "good";
-    els.resultFlavor.textContent = red ? pick(flavorRed) : pick(flavorTime);
+    els.resultKicker.textContent = "TIME";
+    els.resultTitle.textContent = "TIME";
+    els.resultTitle.className = "good";
+    els.resultFlavor.textContent = pick(flavorTime);
+    hide(els.resultTitle);
+    show(els.resultHero);
+    show(els.resultHeroSub);
+    show(els.resultTops);
+    els.resultHero.classList.toggle("is-best", rec.isNewBest);
+    els.resultHeroSub.textContent = `${state.cleared} LIGHT${state.cleared === 1 ? "" : "S"}`;
+    countUp(els.resultDist, dist, "", 1080, () => {
+      els.resultHero.classList.add("punch");
+    });
+    renderTops(rec.tops, rec.rank);
+    celebrateTop(rec.rank);
   }
-  if (isNew) {
+
+  if (timed && rec.isNewBest) {
+    els.resultNew.textContent = "NEW BEST";
+    show(els.resultNew);
+    audio.best();
+    flashScreen("best", 520);
+  } else if (timed && rec.rank > 0) {
+    els.resultNew.textContent = `${ordinal(rec.rank)} BEST`;
+    els.resultNew.classList.add("place");
+    show(els.resultNew);
+    audio.top();
+    flashScreen("good", 380);
+  } else if (rec.isNewBest) {
+    els.resultNew.textContent = "NEW BEST";
     show(els.resultNew);
     audio.best();
   } else {
     hide(els.resultNew);
-    if (!red && !omen) audio.timeup();
+    if (timed) audio.timeup();
   }
+
   countUp(els.statDist, dist, " m");
   countUp(els.statLights, state.cleared, "", 480);
   els.statBest.textContent = `${best} m`;
   els.titleBest.textContent = String(best);
-  if (!red && !omen) flashScreen("good", 420);
+  if (timed && !rec.isNewBest && rec.rank === 0) flashScreen("good", 420);
   syncAuthUi();
   void postRun();
 }
@@ -1316,6 +1455,11 @@ function tick(now) {
     state.time += dt * 0.15;
   } else if (state.mode === "disaster") {
     updateDisaster(dt);
+  } else if (state.mode === "pause") {
+    audio.setEngine(0, false, false);
+    render();
+    requestAnimationFrame(tick);
+    return;
   }
   audio.setEngine(state.speed, state.holding, state.mode === "play" || state.mode === "countdown");
   updateParticles(dt);
@@ -1323,6 +1467,29 @@ function tick(now) {
   updateHud();
   state.wasHolding = state.holding;
   requestAnimationFrame(tick);
+}
+
+function pauseGame() {
+  if (state.mode !== "play" && state.mode !== "countdown") return;
+  state.resumeMode = state.mode;
+  state.mode = "pause";
+  state.holding = false;
+  hide(els.pedalWrap);
+  if (state.resumeMode === "countdown") hide(els.countdown);
+  show(els.pause);
+  audio.ui();
+}
+
+function resumeGame() {
+  if (state.mode !== "pause") return;
+  last = performance.now();
+  state.mode = state.resumeMode || "play";
+  state.resumeMode = null;
+  state.holding = false;
+  hide(els.pause);
+  show(els.pedalWrap);
+  if (state.mode === "countdown") show(els.countdown);
+  audio.ui();
 }
 
 function startGame() {
@@ -1338,10 +1505,12 @@ function startGame() {
   hide(els.title);
   hide(els.result);
   hide(els.board);
+  hide(els.pause);
   hide(els.authBar);
   hide(els.authError);
   show(els.hud);
   show(els.pedalWrap);
+  show(els.btnPause);
   show(els.countdown);
   els.countdown.textContent = "";
   els.countdown.classList.remove("go");
@@ -1352,8 +1521,11 @@ function backToTitle() {
   resetRun("title");
   hide(els.result);
   hide(els.board);
+  hide(els.pause);
   hide(els.hud);
   hide(els.pedalWrap);
+  hide(els.btnPause);
+  hide(els.countdown);
   show(els.title);
   show(els.authBar);
 }
@@ -1533,6 +1705,13 @@ window.addEventListener("pointercancel", () => {
 
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
+  if (e.code === "Escape" || e.code === "KeyP") {
+    e.preventDefault();
+    if (state.mode === "play" || state.mode === "countdown") pauseGame();
+    else if (state.mode === "pause") resumeGame();
+    return;
+  }
+  if (state.mode === "pause") return;
   if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") {
     e.preventDefault();
     if (state.mode === "title" && els.board.classList.contains("hidden")) startGame();
@@ -1552,6 +1731,13 @@ window.addEventListener("keyup", (e) => {
 document.getElementById("btn-start").addEventListener("click", startGame);
 document.getElementById("btn-retry").addEventListener("click", startGame);
 document.getElementById("btn-menu").addEventListener("click", () => void openBoard());
+els.btnPause.addEventListener("click", () => {
+  if (state.mode === "pause") resumeGame();
+  else pauseGame();
+});
+els.btnResume.addEventListener("click", resumeGame);
+els.btnRestart.addEventListener("click", startGame);
+els.btnExit.addEventListener("click", backToTitle);
 els.btnIn.addEventListener("click", () => void signInWithGoogle());
 els.btnSave.addEventListener("click", () => void signInWithGoogle());
 els.btnOut.addEventListener("click", () => void signOut());
@@ -1612,5 +1798,13 @@ if (import.meta.env.DEV) {
   window.__omen = (type) => {
     state.omen = null;
     beginDisaster(type);
+  };
+  window.__endRun = (reason = "time", dist = 847) => {
+    hide(els.title);
+    hide(els.countdown);
+    state.mode = "play";
+    state.carY = dist;
+    state.cleared = 11;
+    endRun(reason);
   };
 }

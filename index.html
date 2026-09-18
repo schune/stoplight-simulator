@@ -126,6 +126,11 @@
           <path fill="currentColor" d="M4 9v6h3.2L12 19.8V4.2L7.2 9H4zm12.3-3.1-1.4 1.4 2.1 2.1-2.1 2.1 1.4 1.4 2.1-2.1 2.1 2.1 1.4-1.4-2.1-2.1 2.1-2.1-1.4-1.4-2.1 2.1-2.1-2.1z"/>
         </svg>
       </button>
+      <button id="btn-pause" class="icon-btn right hidden" type="button" aria-label="Pause">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="currentColor" d="M7 5h3v14H7V5zm7 0h3v14h-3V5z"/>
+        </svg>
+      </button>
 
       <header id="hud" class="hidden" aria-hidden="true">
         <div class="hud-clock">
@@ -191,18 +196,24 @@
       <section id="result" class="panel hidden" aria-hidden="true">
         <p id="result-kicker" class="eyebrow">RUN OVER</p>
         <h2 id="result-title">CAUGHT RED</h2>
+        <p id="result-hero" class="result-hero hidden">
+          <strong id="result-dist">0</strong>
+          <span>m</span>
+        </p>
+        <p id="result-hero-sub" class="hero-sub hidden"></p>
         <p id="result-new" class="new-best hidden">NEW BEST</p>
         <p id="result-flavor" class="flavor"></p>
+        <ol id="result-tops" class="result-tops hidden"></ol>
         <div class="stats">
-          <div>
+          <div data-stat="dist">
             <span class="hud-label">DISTANCE</span>
             <strong id="stat-dist">0</strong>
           </div>
-          <div>
+          <div data-stat="lights">
             <span class="hud-label">LIGHTS</span>
             <strong id="stat-lights">0</strong>
           </div>
-          <div>
+          <div data-stat="best">
             <span class="hud-label">BEST</span>
             <strong id="stat-best">0</strong>
           </div>
@@ -219,6 +230,15 @@
         <ol id="board-list"></ol>
         <p id="board-empty" class="flavor">No ranked runs yet. Sign in and don’t die.</p>
         <button id="btn-board-close" class="ghost" type="button">BACK</button>
+      </section>
+
+      <section id="pause" class="panel hidden" aria-hidden="true">
+        <p class="eyebrow">NIGHT SHIFT</p>
+        <h2>PAUSED</h2>
+        <p class="flavor">The lights can wait.</p>
+        <button id="btn-resume" type="button">RESUME</button>
+        <button id="btn-restart" class="ghost" type="button">RESTART</button>
+        <button id="btn-exit" class="ghost" type="button">EXIT</button>
       </section>
     </main>
     <noscript>

@@ -244,5 +244,10 @@ export function createAudio() {
       setTimeout(() => chord([659, 784], 0.14, "triangle", 0.05), 110);
       setTimeout(() => chord([784, 1046], 0.22, "triangle", 0.055), 230);
     },
+    top() {
+      chord([392, 523], 0.12, "triangle", 0.045);
+      setTimeout(() => chord([523, 659], 0.16, "triangle", 0.05), 120);
+      setTimeout(() => chord([659, 784], 0.18, "triangle", 0.05), 250);
+    },
   };
 }
