@@ -19,7 +19,8 @@ const ROAD_NEAR = 0.48;
 const ROAD_FAR = 0.11;
 const STOP_LINE = 2.2;
 const BOX = 7.2;
-const LIGHT_PASS = 5.6;
+const LIGHT_HIDE = 2;
+const LIGHT_FADE = 2.4;
 const COLORS = {
   red: "#ff2d4a",
   yellow: "#ffc01a",
@@ -857,17 +858,25 @@ function drawStreetLamps() {
 
 function drawLight(light) {
   const z = light.y - state.carY;
-  if (z < LIGHT_PASS || z > 220) return;
+  if (z < 0.5 || z > 220) return;
   const color = colorOf(light, state.time);
   const col = COLORS[color];
   const p = project(0, z);
+  const stopZ = z - STOP_LINE;
+
+  if (z < 70 && stopZ > 0.5) {
+    const stop = project(0, stopZ);
+    ctx.fillStyle = "rgba(244,239,228,0.9)";
+    ctx.fillRect(stop.x - stop.halfPx * 0.9, stop.y, stop.halfPx * 1.8, Math.max(2, lerp(5, 2, stop.t)));
+  }
+
+  const fade = clamp((z - LIGHT_HIDE) / LIGHT_FADE, 0, 1);
+  if (fade <= 0) return;
+
   const pole = project(light.side * (ROAD_HALF + 1.15), z);
   const boxW = lerp(30, 7, p.t);
   const boxH = lerp(56, 13, p.t);
-  const approach = clamp((22 - z) / 16, 0, 1);
-  const hang = lerp(78, 16, p.t) + approach * approach * 92;
-  const top = p.y - hang;
-  const fade = clamp((z - LIGHT_PASS) / 2.4, 0, 1);
+  const top = p.y - lerp(78, 16, p.t);
 
   ctx.save();
   ctx.globalAlpha *= fade;
@@ -917,12 +926,6 @@ function drawLight(light) {
     glow.addColorStop(1, hexA(col, 0));
     ctx.fillStyle = glow;
     ctx.fillRect(p.x - 80, p.y - 30, 160, 80);
-  }
-
-  if (z < 70) {
-    const stop = project(0, Math.max(0.6, z - STOP_LINE));
-    ctx.fillStyle = "rgba(244,239,228,0.9)";
-    ctx.fillRect(stop.x - stop.halfPx * 0.9, stop.y, stop.halfPx * 1.8, Math.max(2, lerp(5, 2, stop.t)));
   }
   ctx.restore();
 }
@@ -1279,7 +1282,7 @@ function render() {
   drawStreetLamps();
   const lights = state.lights
     .map((light) => ({ light, z: light.y - state.carY }))
-    .filter((x) => x.z > LIGHT_PASS && x.z < 230)
+    .filter((x) => x.z > 0.5 && x.z < 230)
     .sort((a, b) => b.z - a.z);
   for (const item of lights) drawLight(item.light);
   if (state.disasterType !== "sinkhole" || state.disasterT < 1.1) drawCar();
