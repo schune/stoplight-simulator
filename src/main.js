@@ -1566,6 +1566,19 @@ audio.onMuteChange(syncMuteUi);
 syncMuteUi();
 
 document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+  document.addEventListener(type, (e) => e.preventDefault());
+}
+let lastTapAt = 0;
+document.addEventListener(
+  "touchend",
+  (e) => {
+    const now = performance.now();
+    if (now - lastTapAt < 350) e.preventDefault();
+    lastTapAt = now;
+  },
+  { passive: false }
+);
 window.addEventListener("resize", resize);
 
 els.titleBest.textContent = String(Math.round(getBest()));
