@@ -12,6 +12,8 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 import { db } from "./firebase.js";
 
+const BOARD = "board";
+
 function clipName(name) {
   return String(name || "Night driver").slice(0, 48);
 }
@@ -50,7 +52,7 @@ async function fetchBoardRest() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         structuredQuery: {
-          from: [{ collectionId: "users" }],
+          from: [{ collectionId: "board" }],
           orderBy: [{ field: { fieldPath: "best" }, direction: "DESCENDING" }],
           limit: 10,
         },
@@ -78,12 +80,12 @@ async function fetchBoardRest() {
 }
 
 export async function loadProfile(uid) {
-  const snap = await withTimeout(getDoc(doc(db, "users", uid)), 6000, "profile-timeout");
+  const snap = await withTimeout(getDoc(doc(db, BOARD, uid)), 6000, "profile-timeout");
   return snap.exists() ? snap.data() : null;
 }
 
 export async function saveRun(user, { distance, lights, reason, localBest }) {
-  const ref = doc(db, "users", user.uid);
+  const ref = doc(db, BOARD, user.uid);
   let prev = null;
   try {
     prev = await loadProfile(user.uid);
@@ -117,7 +119,7 @@ export async function saveRun(user, { distance, lights, reason, localBest }) {
 export async function fetchBoard() {
   try {
     const snap = await withTimeout(
-      getDocs(query(collection(db, "users"), orderBy("best", "desc"), limit(10))),
+      getDocs(query(collection(db, BOARD), orderBy("best", "desc"), limit(10))),
       4000,
       "board-timeout"
     );

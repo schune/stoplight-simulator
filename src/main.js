@@ -7,8 +7,8 @@ const canvas = document.getElementById("view");
 const ctx = canvas.getContext("2d");
 const audio = createAudio();
 
-const BEST_KEY = "stoplight-sim-best";
-const TOP_KEY = "stoplight-sim-tops";
+const BEST_KEY = "stoplight-sim-best-v2";
+const TOP_KEY = "stoplight-sim-tops-v2";
 const RUN_SECONDS = 60;
 const MAX_SPEED = 34;
 const ACCEL = 16;
