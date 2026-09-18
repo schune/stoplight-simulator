@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#07080d" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="description"
+      content="How far can you get in 60 seconds? Hold to drive, let go to brake, and don’t run the red."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Mono:wght@500;600&family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>Stoplight Simulator</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="view"></canvas>
+      <div id="vignette"></div>
+      <div id="grain"></div>
+      <div id="flash"></div>
+
+      <header id="hud" class="hidden" aria-hidden="true">
+        <div class="hud-clock">
+          <span class="hud-label">TIME</span>
+          <span id="hud-time">60.0</span>
+        </div>
+        <div class="hud-odometer">
+          <span class="hud-label">DISTANCE</span>
+          <span id="hud-dist">0</span>
+        </div>
+        <div class="hud-speed">
+          <span class="hud-label">KM/H</span>
+          <span id="hud-speed">0</span>
+        </div>
+      </header>
+
+      <div id="countdown" class="hidden" aria-hidden="true"></div>
+      <div id="toast" class="hidden"></div>
+
+      <div id="pedal-wrap" class="hidden">
+        <div id="pedal" role="button" aria-label="Hold to go">
+          <span id="pedal-state">HOLD</span>
+          <span class="pedal-sub">GAS</span>
+        </div>
+      </div>
+
+      <div id="auth-bar">
+        <button id="btn-board" class="chip" type="button">BOARD</button>
+        <div id="auth-slot">
+          <button id="btn-in" class="chip google" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="#EA4335" d="M12 10.2v3.6h5.1c-.2 1.2-1.5 3.6-5.1 3.6-3.1 0-5.6-2.6-5.6-5.7S8.9 6 12 6c1.8 0 3 .7 3.7 1.4l2.5-2.4C16.7 3.6 14.5 2.6 12 2.6 6.9 2.6 2.8 6.8 2.8 11.9S6.9 21.2 12 21.2c5.8 0 9.6-4.1 9.6-9.8 0-.7-.1-1.2-.2-1.7H12z"/>
+            </svg>
+            SIGN IN
+          </button>
+          <div id="auth-user" class="hidden">
+            <img id="auth-photo" alt="" referrerpolicy="no-referrer" />
+            <span id="auth-name">DRIVER</span>
+            <button id="btn-out" class="text-btn" type="button">OUT</button>
+          </div>
+        </div>
+      </div>
+      <p id="auth-error" class="auth-error hidden"></p>
+
+      <section id="title" class="panel">
+        <div class="logo-lights" aria-hidden="true">
+          <span class="lamp red"></span>
+          <span class="lamp yellow"></span>
+          <span class="lamp green"></span>
+        </div>
+        <p class="eyebrow">60 SECONDS</p>
+        <h1>STOPLIGHT<br />SIMULATOR</h1>
+        <p class="tagline">How far can you get?</p>
+        <p class="pitch">
+          Hold to drive. Let go to brake.<br />
+          Red light and you’re out.
+        </p>
+        <button id="btn-start" type="button">PLAY</button>
+        <p class="best-line">BEST <strong id="title-best">0</strong> m</p>
+        <p class="controls-hint">LIGHTS ARE RANDOM EVERY RUN</p>
+      </section>
+
+      <section id="result" class="panel hidden" aria-hidden="true">
+        <p id="result-kicker" class="eyebrow">RUN OVER</p>
+        <h2 id="result-title">CAUGHT RED</h2>
+        <p id="result-flavor" class="flavor"></p>
+        <div class="stats">
+          <div>
+            <span class="hud-label">DISTANCE</span>
+            <strong id="stat-dist">0</strong>
+          </div>
+          <div>
+            <span class="hud-label">LIGHTS</span>
+            <strong id="stat-lights">0</strong>
+          </div>
+          <div>
+            <span class="hud-label">BEST</span>
+            <strong id="stat-best">0</strong>
+          </div>
+        </div>
+        <button id="btn-retry" type="button">DRIVE AGAIN</button>
+        <button id="btn-save" class="ghost hidden" type="button">SIGN IN TO RANK</button>
+        <button id="btn-menu" class="ghost" type="button">TITLE</button>
+      </section>
+
+      <section id="board" class="panel hidden" aria-hidden="true">
+        <p class="eyebrow">NIGHT SHIFT</p>
+        <h2>BOARD</h2>
+        <p class="flavor">Signed-in bests. Local ghost scores stay on the device.</p>
+        <ol id="board-list"></ol>
+        <p id="board-empty" class="flavor">No ranked runs yet. Sign in and don’t die.</p>
+        <button id="btn-board-close" class="ghost" type="button">BACK</button>
+      </section>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

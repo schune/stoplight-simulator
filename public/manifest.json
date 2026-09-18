@@ -1,0 +1,17 @@
+{
+  "name": "Stoplight Simulator",
+  "short_name": "Stoplight",
+  "description": "How far can you get in 60 seconds? Don’t run the red.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07080d",
+  "theme_color": "#07080d",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

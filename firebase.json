@@ -1,0 +1,35 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Stoplight Simulator",
+        "supportEmail": "lukeschuneman@gmail.com",
+        "authorizedRedirectUris": [
+          "http://localhost",
+          "https://stoplight-simulator.web.app/__/auth/handler",
+          "https://stoplight-simulator.firebaseapp.com/__/auth/handler"
+        ]
+      }
+    },
+    "authorizedDomains": [
+      "localhost",
+      "stoplight-simulator.web.app",
+      "stoplight-simulator.firebaseapp.com"
+    ]
+  },
+  "hosting": {
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "headers": [
+      {
+        "source": "/index.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  }
+}
