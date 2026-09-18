@@ -393,7 +393,7 @@ function spark(x, y, { vx, vy, life = 0.4, size = 3, color = "#ff8a3d", g = 90 }
 }
 
 function rollOmen() {
-  if (Math.random() >= 0.05) {
+  if (Math.random() >= 1 / 15) {
     state.omen = null;
     state.omenAt = 0;
     return;
