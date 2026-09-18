@@ -1,17 +1,41 @@
 {
+  "id": "/",
   "name": "Stoplight Simulator",
   "short_name": "Stoplight",
-  "description": "How far can you get in 60 seconds? Don’t run the red.",
+  "description": "Free 60-second driving game. Hold to drive, let go to brake, and don’t run the red.",
   "start_url": "/",
+  "scope": "/",
+  "lang": "en",
+  "dir": "ltr",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#07080d",
   "theme_color": "#07080d",
+  "categories": ["games", "entertainment"],
   "icons": [
     {
       "src": "/favicon.svg",
       "sizes": "any",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
