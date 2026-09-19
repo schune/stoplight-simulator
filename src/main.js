@@ -1,7 +1,7 @@
 import "./style.css";
 import { createAudio } from "./audio.js";
 import { authState, onAuthChange, signInWithGoogle, signOut, startAuth } from "./auth.js";
-import { fetchBoard, loadProfile, saveRun } from "./scores.js";
+import { fetchBoard, loadProfile, rankBoard, saveRun } from "./scores.js";
 
 const canvas = document.getElementById("view");
 const ctx = canvas.getContext("2d");
@@ -9,6 +9,7 @@ const audio = createAudio();
 
 const BEST_KEY = "stoplight-sim-best-v2";
 const TOP_KEY = "stoplight-sim-tops-v2";
+const BOARD_METRIC_KEY = "stoplight-sim-board-metric";
 const RUN_SECONDS = 60;
 const MAX_SPEED = 34;
 const ACCEL = 16;
@@ -75,6 +76,8 @@ const els = {
   board: document.getElementById("board"),
   boardList: document.getElementById("board-list"),
   boardEmpty: document.getElementById("board-empty"),
+  tabBest: document.getElementById("tab-best"),
+  tabTotal: document.getElementById("tab-total"),
   mute: document.getElementById("btn-mute"),
   pause: document.getElementById("pause"),
   btnPause: document.getElementById("btn-pause"),
@@ -164,6 +167,8 @@ let width = 390;
 let height = 844;
 let horizon = 280;
 let dpr = 1;
+let boardRows = [];
+let boardMetric = localStorage.getItem(BOARD_METRIC_KEY) === "total" ? "total" : "best";
 let last = performance.now();
 
 function rand(min, max) {
@@ -1624,9 +1629,10 @@ function safePhoto(url) {
   return "/favicon.svg";
 }
 
-function renderBoard(rows) {
+function renderBoard() {
   els.boardList.innerHTML = "";
   const me = authState.user?.uid;
+  const rows = rankBoard(boardRows, boardMetric);
   for (const row of rows) {
     const item = document.createElement("li");
     if (row.uid === me) item.classList.add("me");
@@ -1634,7 +1640,7 @@ function renderBoard(rows) {
       <span class="rank">${row.rank}</span>
       <img alt="" referrerpolicy="no-referrer" src="${safePhoto(row.photoUrl)}" />
       <span class="who">${safeText(row.name)}</span>
-      <span class="meters">${Math.round(row.best)} m</span>
+      <span class="meters">${row.shown} m</span>
     `;
     els.boardList.appendChild(item);
   }
@@ -1643,6 +1649,21 @@ function renderBoard(rows) {
     els.boardEmpty.textContent = "No ranked runs yet.";
     show(els.boardEmpty);
   }
+  els.boardList.dataset.ready = "1";
+}
+
+function syncBoardTabs() {
+  const total = boardMetric === "total";
+  els.tabBest.setAttribute("aria-selected", total ? "false" : "true");
+  els.tabTotal.setAttribute("aria-selected", total ? "true" : "false");
+}
+
+function setBoardMetric(metric) {
+  boardMetric = metric === "total" ? "total" : "best";
+  localStorage.setItem(BOARD_METRIC_KEY, boardMetric);
+  syncBoardTabs();
+  renderBoard();
+  audio.ui();
 }
 
 async function openBoard() {
@@ -1651,17 +1672,21 @@ async function openBoard() {
   hide(els.result);
   show(els.board);
   show(els.authBar);
+  syncBoardTabs();
   els.boardEmpty.textContent = "Loading…";
   show(els.boardEmpty);
   els.boardList.innerHTML = "";
+  delete els.boardList.dataset.ready;
+  boardRows = [];
   try {
-    const rows = await Promise.race([
+    boardRows = await Promise.race([
       fetchBoard(),
       new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
     ]);
-    renderBoard(rows);
+    renderBoard();
   } catch (error) {
     console.warn(error);
+    boardRows = [];
     els.boardEmpty.textContent = "Couldn’t load the leaderboard. Try again.";
     show(els.boardEmpty);
   }
@@ -1743,6 +1768,8 @@ els.btnSave.addEventListener("click", () => void signInWithGoogle());
 els.btnOut.addEventListener("click", () => void signOut());
 els.btnBoard.addEventListener("click", () => void openBoard());
 els.btnBoardClose.addEventListener("click", closeBoard);
+els.tabBest.addEventListener("click", () => setBoardMetric("best"));
+els.tabTotal.addEventListener("click", () => setBoardMetric("total"));
 els.mute.addEventListener("click", () => {
   audio.unlock();
   audio.toggleMute();

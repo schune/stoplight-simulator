@@ -577,6 +577,44 @@ h2 {
   max-width: 20em;
 }
 
+#board .flavor {
+  margin-bottom: 12px;
+}
+
+.board-tabs {
+  display: flex;
+  width: 100%;
+  max-width: 280px;
+  margin: 0 0 14px;
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(7, 8, 13, 0.55);
+}
+
+.board-tabs button {
+  flex: 1;
+  width: auto;
+  max-width: none;
+  height: 36px;
+  letter-spacing: 0.14em;
+  font-size: 11px;
+  background: transparent;
+  color: var(--mute);
+  box-shadow: none;
+}
+
+.board-tabs button:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.board-tabs button[aria-selected="true"] {
+  background: var(--cream);
+  color: #111218;
+}
+
 button {
   appearance: none;
   border: 0;
@@ -919,6 +957,10 @@ button.chip:disabled {
 
 #board-list li {
   animation: rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+#board-list[data-ready] li {
+  animation: none;
 }
 
 #board-list li:nth-child(1) { animation-delay: 0.02s; }

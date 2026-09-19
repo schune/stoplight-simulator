@@ -6,7 +6,7 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
-    function validScore(data) {
+    function validBest(data) {
       return data.best is int
         && data.best >= 0
         && data.best <= 5000
@@ -15,21 +15,29 @@ service cloud.firestore {
         && data.displayName.size() < 80;
     }
 
+    function validBoardScore(data) {
+      return validBest(data)
+        && data.total is int
+        && data.total >= 0
+        && data.total <= 100000000;
+    }
+
     match /users/{uid} {
       allow read: if true;
-      allow create: if isOwner(uid) && validScore(request.resource.data);
+      allow create: if isOwner(uid) && validBest(request.resource.data);
       allow update: if isOwner(uid)
-        && validScore(request.resource.data)
+        && validBest(request.resource.data)
         && request.resource.data.best >= resource.data.best;
       allow delete: if false;
     }
 
     match /board/{uid} {
       allow read: if true;
-      allow create: if isOwner(uid) && validScore(request.resource.data);
+      allow create: if isOwner(uid) && validBoardScore(request.resource.data);
       allow update: if isOwner(uid)
-        && validScore(request.resource.data)
-        && request.resource.data.best >= resource.data.best;
+        && validBoardScore(request.resource.data)
+        && request.resource.data.best >= resource.data.best
+        && (!("total" in resource.data) || request.resource.data.total >= resource.data.total);
       allow delete: if false;
     }
   }

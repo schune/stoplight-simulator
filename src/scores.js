@@ -3,8 +3,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  orderBy,
-  query,
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
@@ -24,15 +22,28 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
-function readBoardRow(id, data, index) {
+function readBoardRow(id, data) {
+  const best = Number(data.best) || 0;
+  const storedTotal = Number(data.total);
   return {
     uid: id,
-    rank: index + 1,
     name: data.displayName || "Night driver",
     photoUrl: data.photoURL || "",
-    best: Number(data.best) || 0,
+    best,
+    total: Number.isFinite(storedTotal) && storedTotal > 0 ? storedTotal : best,
     lights: Number(data.bestLights) || 0,
   };
+}
+
+export function rankBoard(rows, metric) {
+  const key = metric === "total" ? "total" : "best";
+  return [...rows]
+    .sort((a, b) => (Number(b[key]) || 0) - (Number(a[key]) || 0) || String(a.name).localeCompare(String(b.name)))
+    .map((row, index) => ({
+      ...row,
+      rank: index + 1,
+      shown: Math.round(Number(row[key]) || 0),
+    }));
 }
 
 function restValue(field) {
@@ -52,7 +63,6 @@ async function fetchBoardRest() {
       body: JSON.stringify({
         structuredQuery: {
           from: [{ collectionId: "board" }],
-          orderBy: [{ field: { fieldPath: "best" }, direction: "DESCENDING" }],
         },
       }),
     }
@@ -61,19 +71,16 @@ async function fetchBoardRest() {
   const rows = await res.json();
   return (Array.isArray(rows) ? rows : [])
     .filter((row) => row.document)
-    .map((row, index) => {
+    .map((row) => {
       const fields = row.document.fields || {};
       const id = String(row.document.name || "").split("/").pop();
-      return readBoardRow(
-        id,
-        {
-          displayName: restValue(fields.displayName),
-          photoURL: restValue(fields.photoURL),
-          best: restValue(fields.best),
-          bestLights: restValue(fields.bestLights),
-        },
-        index
-      );
+      return readBoardRow(id, {
+        displayName: restValue(fields.displayName),
+        photoURL: restValue(fields.photoURL),
+        best: restValue(fields.best),
+        total: restValue(fields.total),
+        bestLights: restValue(fields.bestLights),
+      });
     });
 }
 
@@ -90,8 +97,15 @@ export async function saveRun(user, { distance, lights, reason, localBest }) {
   } catch {
     prev = null;
   }
-  const best = Math.round(Math.max(Number(prev?.best) || 0, Number(localBest) || 0, Number(distance) || 0));
-  const fromThisRun = best === Math.round(Number(distance) || 0);
+  const runDist = Math.round(Number(distance) || 0);
+  const best = Math.round(Math.max(Number(prev?.best) || 0, Number(localBest) || 0, runDist));
+  const fromThisRun = best === runDist;
+  const prevTotal = Number(prev?.total);
+  const baseTotal = Number.isFinite(prevTotal) ? Math.max(0, prevTotal) : Math.round(Number(prev?.best) || 0);
+  const total = Math.min(
+    100000000,
+    reason === "sync" ? Math.max(baseTotal, Math.round(Number(localBest) || 0)) : baseTotal + runDist
+  );
   await withTimeout(
     setDoc(
       ref,
@@ -99,8 +113,9 @@ export async function saveRun(user, { distance, lights, reason, localBest }) {
         displayName: clipName(user.name),
         photoURL: user.photoUrl || "",
         best,
+        total,
         bestLights: fromThisRun ? Math.round(Number(lights) || 0) : Math.round(Number(prev?.bestLights) || 0),
-        lastDistance: Math.round(Number(distance) || 0),
+        lastDistance: runDist,
         lastLights: Math.round(Number(lights) || 0),
         lastReason: String(reason || ""),
         updatedAt: serverTimestamp(),
@@ -117,11 +132,11 @@ export async function saveRun(user, { distance, lights, reason, localBest }) {
 export async function fetchBoard() {
   try {
     const snap = await withTimeout(
-      getDocs(query(collection(db, BOARD), orderBy("best", "desc"))),
+      getDocs(collection(db, BOARD)),
       4000,
       "board-timeout"
     );
-    return snap.docs.map((item, index) => readBoardRow(item.id, item.data(), index));
+    return snap.docs.map((item) => readBoardRow(item.id, item.data()));
   } catch {
     return fetchBoardRest();
   }
