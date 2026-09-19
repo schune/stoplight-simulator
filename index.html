@@ -133,16 +133,18 @@
       </button>
 
       <header id="hud" class="hidden" aria-hidden="true">
+        <div class="time-fuse" aria-hidden="true"><i id="time-fuse-bar"></i></div>
         <div class="hud-clock">
+          <div class="hud-fill" id="time-fill"></div>
           <span class="hud-label">TIME</span>
           <span id="hud-time">60.0</span>
         </div>
         <div class="hud-odometer">
-          <span class="hud-label">DISTANCE</span>
+          <span class="hud-label">FT</span>
           <span id="hud-dist">0</span>
         </div>
         <div class="hud-speed">
-          <span class="hud-label">KM/H</span>
+          <span class="hud-label">MPH</span>
           <span id="hud-speed">0</span>
         </div>
       </header>
@@ -189,7 +191,7 @@
           Red light and you’re out.
         </p>
         <button id="btn-start" type="button">PLAY</button>
-        <p class="best-line">BEST <strong id="title-best">0</strong> m</p>
+        <p class="best-line">BEST <strong id="title-best">0</strong> ft</p>
         <p class="controls-hint">LIGHTS ARE RANDOM EVERY RUN</p>
       </section>
 
@@ -198,7 +200,7 @@
         <h2 id="result-title">CAUGHT RED</h2>
         <p id="result-hero" class="result-hero hidden">
           <strong id="result-dist">0</strong>
-          <span>m</span>
+          <span>ft</span>
         </p>
         <p id="result-hero-sub" class="hero-sub hidden"></p>
         <p id="result-new" class="new-best hidden">NEW BEST</p>
@@ -206,7 +208,7 @@
         <ol id="result-tops" class="result-tops hidden"></ol>
         <div class="stats">
           <div data-stat="dist">
-            <span class="hud-label">DISTANCE</span>
+            <span class="hud-label">FEET</span>
             <strong id="stat-dist">0</strong>
           </div>
           <div data-stat="lights">

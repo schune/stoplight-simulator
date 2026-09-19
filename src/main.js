@@ -14,6 +14,8 @@ const RUN_SECONDS = 60;
 const MAX_SPEED = 34;
 const ACCEL = 16;
 const BRAKE = 24;
+const FT_PER_M = 3.280839895;
+const MPH_PER_MS = 2.236936292;
 const CAR_LENGTH = 4.2;
 const ROAD_HALF = 4.6;
 const DEPTH_K = 26;
@@ -47,6 +49,8 @@ const els = {
   time: document.getElementById("hud-time"),
   dist: document.getElementById("hud-dist"),
   speed: document.getElementById("hud-speed"),
+  timeFuse: document.getElementById("time-fuse-bar"),
+  timeFill: document.getElementById("time-fill"),
   countdown: document.getElementById("countdown"),
   toast: document.getElementById("toast"),
   flash: document.getElementById("flash"),
@@ -161,6 +165,8 @@ const state = {
   disasterType: null,
   disasterT: 0,
   resumeMode: null,
+  belt: 0,
+  ftMark: 0,
 };
 
 let width = 390;
@@ -181,6 +187,102 @@ function pick(arr) {
 
 function clamp(v, a, b) {
   return Math.max(a, Math.min(b, v));
+}
+
+function toFeet(meters) {
+  return Math.round((Number(meters) || 0) * FT_PER_M);
+}
+
+function formatFt(meters) {
+  return `${toFeet(meters).toLocaleString("en-US")} ft`;
+}
+
+function toMph(mps) {
+  return Math.round((Number(mps) || 0) * MPH_PER_MS);
+}
+
+function mix3(a, b, t) {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+function rgb(c, a) {
+  const r = Math.round(c[0]);
+  const g = Math.round(c[1]);
+  const b = Math.round(c[2]);
+  return a == null ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${a})`;
+}
+
+const BELTS = [
+  {
+    y: 0,
+    name: "",
+    sky: [[5, 6, 15], [12, 16, 36], [26, 21, 40], [58, 36, 24]],
+    haze: [255, 132, 62],
+    lamp: [255, 226, 168],
+    window: [255, 214, 130],
+  },
+  {
+    y: 400,
+    name: "NEON ROW",
+    sky: [[12, 5, 18], [32, 10, 38], [52, 16, 40], [74, 28, 38]],
+    haze: [255, 72, 124],
+    lamp: [255, 168, 214],
+    window: [255, 150, 210],
+  },
+  {
+    y: 820,
+    name: "RIVER PARK",
+    sky: [[6, 12, 22], [10, 24, 44], [16, 40, 56], [28, 52, 58]],
+    haze: [72, 168, 210],
+    lamp: [176, 220, 255],
+    window: [150, 210, 255],
+  },
+  {
+    y: 1280,
+    name: "THE SPUR",
+    sky: [[8, 8, 14], [20, 16, 20], [42, 32, 22], [78, 54, 28]],
+    haze: [214, 164, 72],
+    lamp: [255, 214, 150],
+    window: [255, 206, 130],
+  },
+];
+
+function beltAt(y) {
+  let i = 0;
+  while (i < BELTS.length - 1 && y >= BELTS[i + 1].y) i += 1;
+  const cur = BELTS[i];
+  const next = BELTS[Math.min(i + 1, BELTS.length - 1)];
+  const span = Math.max(1, next.y - cur.y);
+  const t = cur === next ? 1 : clamp((y - cur.y) / span, 0, 1);
+  const ease = t * t * (3 - 2 * t);
+  return { i, cur, next, t: ease };
+}
+
+let look = null;
+
+function nightLook() {
+  const travel = beltAt(state.carY);
+  const clock = clamp(1 - state.remaining / RUN_SECONDS, 0, 1);
+  const late = clock * clock;
+  const sky = travel.cur.sky.map((c, idx) => mix3(c, travel.next.sky[idx], travel.t));
+  return {
+    sky: [
+      mix3(sky[0], [20, 16, 34], late * 0.5),
+      mix3(sky[1], [44, 28, 50], late * 0.58),
+      mix3(sky[2], [96, 50, 44], late * 0.72),
+      mix3(sky[3], [168, 92, 50], late * 0.88),
+    ],
+    haze: mix3(mix3(travel.cur.haze, travel.next.haze, travel.t), [255, 150, 88], late * 0.4),
+    lamp: mix3(travel.cur.lamp, travel.next.lamp, travel.t),
+    window: mix3(travel.cur.window, travel.next.window, travel.t),
+    star: 0.3 + travel.i * 0.08 + travel.t * 0.1 + late * 0.1,
+    moonY: 0.34 + late * 0.26,
+    moonA: clamp(1 - late * 0.62, 0.28, 1),
+    cityScale: 1.08 - clamp(state.carY / 1700, 0, 1) * 0.42,
+    late,
+    clock,
+    belt: travel.i,
+  };
 }
 
 function getBest() {
@@ -287,23 +389,25 @@ function generateWorld() {
   }
 
   const buildings = [];
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < 120; i++) {
+    const z = i * 26 + rand(0, 16);
+    const band = clamp(z / 1800, 0, 1);
     const side = i % 2 === 0 ? -1 : 1;
     buildings.push({
-      z: i * 32 + rand(0, 18),
+      z,
       side,
-      w: rand(6, 14),
+      w: rand(6, 14) * (1 - band * 0.22),
       d: rand(8, 18),
-      h: rand(8, 28),
+      h: rand(8, 28) * (1.18 - band * 0.62),
       shade: rand(0.04, 0.12),
-      neon: Math.random() < 0.22 ? pick(["#22e38a", "#ff2d4a", "#7aa2ff", "#ffc01a"]) : null,
+      neon: Math.random() < 0.3 - band * 0.2 ? pick(["#22e38a", "#ff2d4a", "#7aa2ff", "#ffc01a", "#ff5ad5"]) : null,
     });
   }
 
   const lamps = [];
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < 88; i++) {
     lamps.push({
-      z: 20 + i * 38 + rand(-8, 8),
+      z: 18 + i * 36 + rand(-8, 8),
       side: i % 2 === 0 ? -1 : 1,
     });
   }
@@ -336,6 +440,8 @@ function resetRun(mode) {
   state.disasterType = null;
   state.disasterT = 0;
   state.resumeMode = null;
+  state.belt = 0;
+  state.ftMark = 0;
 }
 
 const hideTimers = new WeakMap();
@@ -610,7 +716,7 @@ function renderTops(tops, rank) {
     } else {
       if (i === 0) li.classList.add("gold");
       if (rank === i + 1) li.classList.add("now");
-      li.innerHTML = `<span class="rank">${ordinal(i + 1)}</span><span class="meters">${dist} m</span>`;
+      li.innerHTML = `<span class="rank">${ordinal(i + 1)}</span><span class="meters">${formatFt(dist)}</span>`;
     }
     els.resultTops.appendChild(li);
   }
@@ -666,7 +772,7 @@ function endRun(reason) {
     show(els.resultTops);
     els.resultHero.classList.toggle("is-best", rec.isNewBest);
     els.resultHeroSub.textContent = `${state.cleared} LIGHT${state.cleared === 1 ? "" : "S"}`;
-    countUp(els.resultDist, dist, "", 1080, () => {
+    countUp(els.resultDist, toFeet(dist), "", 1080, () => {
       els.resultHero.classList.add("punch");
     });
     renderTops(rec.tops, rec.rank);
@@ -693,26 +799,27 @@ function endRun(reason) {
     if (timed) audio.timeup();
   }
 
-  countUp(els.statDist, dist, " m");
+  countUp(els.statDist, toFeet(dist), " ft");
   countUp(els.statLights, state.cleared, "", 480);
-  els.statBest.textContent = `${best} m`;
-  els.titleBest.textContent = String(best);
+  els.statBest.textContent = formatFt(best);
+  els.titleBest.textContent = String(toFeet(best));
   if (timed && !rec.isNewBest && rec.rank === 0) flashScreen("good", 420);
   syncAuthUi();
   void postRun();
 }
 
-function toast(text) {
+function toast(text, kind = "") {
   state.toastText = text;
   state.toastAt = performance.now();
   els.toast.textContent = text;
+  els.toast.classList.toggle("place", kind === "place");
   els.toast.classList.remove("hidden");
   els.toast.style.animation = "none";
   void els.toast.offsetWidth;
   els.toast.style.animation = "";
   setTimeout(() => {
     if (els.toast.textContent === text) els.toast.classList.add("hidden");
-  }, 700);
+  }, kind === "place" ? 1100 : 700);
 }
 
 function updatePlay(dt) {
@@ -803,6 +910,13 @@ function updatePlay(dt) {
     }
   }
 
+  const belt = beltAt(state.carY);
+  if (belt.i > state.belt && belt.cur.name) {
+    toast(belt.cur.name, "place");
+    rumble([10, 24, 10]);
+  }
+  state.belt = belt.i;
+
   if (state.remaining <= 0) {
     state.remaining = 0;
     state.speed = 0;
@@ -811,16 +925,18 @@ function updatePlay(dt) {
 }
 
 function drawSky() {
+  const sky = look.sky;
   const g = ctx.createLinearGradient(0, 0, 0, horizon + 50);
-  g.addColorStop(0, "#05060f");
-  g.addColorStop(0.42, "#0c1024");
-  g.addColorStop(0.78, "#1a1528");
-  g.addColorStop(1, "#3a2418");
+  g.addColorStop(0, rgb(sky[0]));
+  g.addColorStop(0.42, rgb(sky[1]));
+  g.addColorStop(0.78, rgb(sky[2]));
+  g.addColorStop(1, rgb(sky[3]));
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, width, height);
 
   const moonX = width * 0.78;
-  const moonY = horizon * 0.34;
+  const moonY = horizon * look.moonY;
+  ctx.globalAlpha = look.moonA;
   const moonGlow = ctx.createRadialGradient(moonX, moonY, 6, moonX, moonY, 70);
   moonGlow.addColorStop(0, "rgba(255, 236, 200, 0.55)");
   moonGlow.addColorStop(0.35, "rgba(255, 214, 150, 0.12)");
@@ -833,14 +949,15 @@ function drawSky() {
   ctx.beginPath();
   ctx.arc(moonX, moonY, 13, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#05060f";
+  ctx.fillStyle = rgb(sky[0]);
   ctx.beginPath();
   ctx.arc(moonX + 5, moonY - 3, 11, 0, Math.PI * 2);
   ctx.fill();
+  ctx.globalAlpha = 1;
 
   for (const star of STARS) {
     const tw = 0.35 + Math.abs(Math.sin(state.time * star.tw + star.x * 8)) * 0.65;
-    ctx.fillStyle = `rgba(255,255,255,${0.28 + tw * 0.5})`;
+    ctx.fillStyle = `rgba(255,255,255,${look.star * tw})`;
     const x = star.x * width;
     const y = 8 + star.y * (horizon - 28);
     const s = star.s * (tw > 0.85 ? 1.6 : 1);
@@ -848,22 +965,32 @@ function drawSky() {
   }
 
   const haze = ctx.createRadialGradient(width / 2, horizon, 8, width / 2, horizon, width * 0.78);
-  haze.addColorStop(0, "rgba(255, 132, 62, 0.28)");
-  haze.addColorStop(0.45, "rgba(255, 90, 50, 0.08)");
-  haze.addColorStop(1, "rgba(255, 90, 50, 0)");
+  haze.addColorStop(0, rgb(look.haze, 0.3));
+  haze.addColorStop(0.45, rgb(look.haze, 0.08));
+  haze.addColorStop(1, rgb(look.haze, 0));
   ctx.fillStyle = haze;
   ctx.fillRect(0, horizon - 90, width, 130);
+
+  if (look.late > 0.5) {
+    const a = ((look.late - 0.5) / 0.5) * 0.28;
+    const edge = ctx.createRadialGradient(width / 2, height * 0.42, width * 0.18, width / 2, height * 0.42, width * 0.82);
+    edge.addColorStop(0, "rgba(0,0,0,0)");
+    edge.addColorStop(1, rgb([36, 4, 6], a));
+    ctx.fillStyle = edge;
+    ctx.fillRect(0, 0, width, height);
+  }
 }
 
 function drawCity() {
   const baseY = horizon;
+  const scale = look.cityScale;
   for (let i = 0; i < 34; i++) {
     const x = (i / 34) * width - 6;
     const w = width / 15 + ((i * 11) % 10);
-    const h = 22 + ((i * 19) % 48);
+    const h = (22 + ((i * 19) % 48)) * scale;
     ctx.fillStyle = i % 4 === 0 ? "#080910" : "#0b0d16";
     ctx.fillRect(x, baseY - h, w - 2, h);
-    ctx.fillStyle = "rgba(255, 210, 120, 0.16)";
+    ctx.fillStyle = rgb(look.window, 0.18);
     for (let wdw = 0; wdw < 6; wdw++) {
       if ((i + wdw) % 3 === 0) continue;
       const on = Math.sin(state.time * 0.7 + i * 2 + wdw) > -0.35;
@@ -914,8 +1041,8 @@ function drawRoad() {
   }
 
   const fade = ctx.createLinearGradient(0, horizon, 0, horizon + 90);
-  fade.addColorStop(0, "rgba(58, 36, 24, 0.72)");
-  fade.addColorStop(1, "rgba(58, 36, 24, 0)");
+  fade.addColorStop(0, rgb(look.sky[3], 0.72));
+  fade.addColorStop(1, rgb(look.sky[3], 0));
   ctx.fillStyle = fade;
   ctx.fillRect(0, horizon, width, 90);
 }
@@ -950,7 +1077,7 @@ function drawBuildings() {
       ctx.fillRect(x0 + bw * 0.16, y0 + bh * 0.16, bw * 0.68, Math.max(2, bh * 0.07));
       ctx.globalAlpha = 1;
     }
-    ctx.fillStyle = "rgba(255, 214, 130, 0.22)";
+    ctx.fillStyle = rgb(look.window, 0.24);
     for (let r = 0; r < 5; r++) {
       for (let c = 0; c < 3; c++) {
         if ((r + c + (b.z | 0)) % 3 === 0) continue;
@@ -980,7 +1107,7 @@ function drawStreetLamps() {
     ctx.lineTo(p.x, p.y - h);
     ctx.lineTo(p.x - lamp.side * lerp(10, 3, p.t), p.y - h);
     ctx.stroke();
-    ctx.fillStyle = "rgba(255, 196, 90, 0.14)";
+    ctx.fillStyle = rgb(look.lamp, 0.16);
     ctx.beginPath();
     ctx.moveTo(p.x - lamp.side * lerp(8, 2, p.t), p.y - h);
     ctx.lineTo(p.x - lamp.side * lerp(36, 9, p.t), p.y + 12);
@@ -988,7 +1115,7 @@ function drawStreetLamps() {
     ctx.closePath();
     ctx.fill();
     const r = Math.max(1.8, 3.6 * (1 - p.t * 0.6));
-    ctx.fillStyle = "#ffe2a8";
+    ctx.fillStyle = rgb(look.lamp);
     ctx.beginPath();
     ctx.arc(p.x - lamp.side * lerp(8, 2, p.t), p.y - h, r, 0, Math.PI * 2);
     ctx.fill();
@@ -1413,6 +1540,7 @@ function drawFx() {
 
 function render() {
   horizon = height * 0.33;
+  look = nightLook();
   ctx.save();
   if (state.shake > 0.4) {
     ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
@@ -1440,10 +1568,23 @@ function render() {
 function updateHud() {
   if (state.mode !== "play" && state.mode !== "countdown" && state.mode !== "disaster") return;
   const t = Math.max(0, state.remaining);
+  const frac = clamp(t / RUN_SECONDS, 0, 1);
   els.time.textContent = t.toFixed(1);
   els.time.className = t < 8 ? "critical" : t < 15 ? "warn" : "";
-  els.dist.textContent = `${Math.round(state.carY)}`;
-  els.speed.textContent = `${Math.round(state.speed * 3.6)}`;
+  els.hud.classList.toggle("is-warn", t < 15 && t >= 8);
+  els.hud.classList.toggle("is-critical", t < 8);
+  els.timeFuse.style.transform = `scaleX(${frac})`;
+  els.timeFill.style.height = `${frac * 100}%`;
+  const feet = toFeet(state.carY);
+  els.dist.textContent = `${feet}`;
+  const mark = Math.floor(feet / 500);
+  if (mark > state.ftMark && state.mode === "play") {
+    state.ftMark = mark;
+    els.dist.classList.remove("tick");
+    void els.dist.offsetWidth;
+    els.dist.classList.add("tick");
+  }
+  els.speed.textContent = `${toMph(state.speed)}`;
   els.pedal.classList.toggle("held", state.holding);
   els.pedal.classList.toggle("braking", !state.holding && state.speed > 1);
   els.pedalState.textContent = state.holding ? "GO" : "HOLD";
@@ -1536,9 +1677,9 @@ function backToTitle() {
 }
 
 function setBestLabel(n) {
-  const value = String(Math.round(n));
-  els.titleBest.textContent = value;
-  els.statBest.textContent = `${value} m`;
+  const feet = String(toFeet(n));
+  els.titleBest.textContent = feet;
+  els.statBest.textContent = formatFt(n);
 }
 
 function syncAuthUi() {
@@ -1640,7 +1781,7 @@ function renderBoard() {
       <span class="rank">${row.rank}</span>
       <img alt="" referrerpolicy="no-referrer" src="${safePhoto(row.photoUrl)}" />
       <span class="who">${safeText(row.name)}</span>
-      <span class="meters">${row.shown} m</span>
+      <span class="meters">${formatFt(row.shown)}</span>
     `;
     els.boardList.appendChild(item);
   }
@@ -1846,7 +1987,7 @@ document.addEventListener(
 );
 window.addEventListener("resize", resize);
 
-els.titleBest.textContent = String(Math.round(getBest()));
+els.titleBest.textContent = String(toFeet(getBest()));
 resetRun("title");
 resize();
 syncAuthUi();
