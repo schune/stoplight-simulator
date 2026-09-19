@@ -463,6 +463,14 @@ body {
   animation-duration: 1.1s;
 }
 
+#toast.egg {
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  color: #c8ccd4;
+  text-shadow: 0 0 22px rgba(200, 204, 212, 0.4);
+  animation-duration: 1.6s;
+}
+
 #pedal-wrap {
   position: absolute;
   left: 0;
@@ -958,6 +966,30 @@ button.chip:disabled {
 
 #result h2.bad {
   color: var(--red);
+}
+
+.result-miss {
+  margin: 2px 0 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#result-left {
+  margin: 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  color: var(--cream);
+}
+
+#result-pace {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--yellow);
 }
 
 #result h2.omen {

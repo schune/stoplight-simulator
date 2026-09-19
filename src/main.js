@@ -62,6 +62,9 @@ const els = {
   resultHero: document.getElementById("result-hero"),
   resultDist: document.getElementById("result-dist"),
   resultHeroSub: document.getElementById("result-hero-sub"),
+  resultMiss: document.getElementById("result-miss"),
+  resultLeft: document.getElementById("result-left"),
+  resultPace: document.getElementById("result-pace"),
   resultTops: document.getElementById("result-tops"),
   statDist: document.getElementById("stat-dist"),
   statLights: document.getElementById("stat-lights"),
@@ -162,6 +165,8 @@ const state = {
   crashT: 0,
   omen: null,
   omenAt: 0,
+  colorblind: false,
+  colorblindAt: 0,
   disasterType: null,
   disasterT: 0,
   resumeMode: null,
@@ -191,6 +196,13 @@ function clamp(v, a, b) {
 
 function toFeet(meters) {
   return Math.round((Number(meters) || 0) * FT_PER_M);
+}
+
+function projectedMeters(dist, remaining) {
+  const left = Math.max(0, Number(remaining) || 0);
+  const elapsed = RUN_SECONDS - left;
+  const pace = elapsed >= 0.75 ? dist / elapsed : Math.max(0, state.speed);
+  return Math.max(dist, Math.round(dist + pace * left));
 }
 
 function formatFt(meters, { miles = false } = {}) {
@@ -444,6 +456,8 @@ function resetRun(mode) {
   state.crashT = 0;
   state.omen = null;
   state.omenAt = 0;
+  state.colorblind = false;
+  state.colorblindAt = 0;
   state.disasterType = null;
   state.disasterT = 0;
   state.resumeMode = null;
@@ -518,6 +532,21 @@ function rollOmen() {
   }
   state.omen = pick(["meteor", "sinkhole", "tornado"]);
   state.omenAt = rand(12, 47);
+}
+
+function rollColorblind() {
+  if (Math.random() >= 0.05) {
+    state.colorblindAt = 0;
+    return;
+  }
+  state.colorblindAt = 30;
+}
+
+function beginColorblind() {
+  state.colorblind = true;
+  state.colorblindAt = 0;
+  toast("COLOR BLIND LMAO", "egg");
+  rumble(16);
 }
 
 function beginDisaster(type) {
@@ -758,13 +787,19 @@ function endRun(reason) {
     show(els.resultTitle);
     hide(els.resultHero);
     hide(els.resultHeroSub);
+    hide(els.resultMiss);
     hide(els.resultTops);
   } else if (red) {
+    const left = Math.max(0, state.remaining);
+    const projected = projectedMeters(dist, left);
     els.resultKicker.textContent = "YOU RAN IT";
     els.resultTitle.textContent = "CAUGHT RED";
     els.resultTitle.className = "bad";
+    els.resultLeft.textContent = `${left.toFixed(1)}s LEFT`;
+    els.resultPace.textContent = `COULD HAVE BEEN ${formatFt(projected)}`;
     els.resultFlavor.textContent = pick(flavorRed);
     show(els.resultTitle);
+    show(els.resultMiss);
     hide(els.resultHero);
     hide(els.resultHeroSub);
     hide(els.resultTops);
@@ -774,6 +809,7 @@ function endRun(reason) {
     els.resultTitle.className = "good";
     els.resultFlavor.textContent = pick(flavorTime);
     hide(els.resultTitle);
+    hide(els.resultMiss);
     show(els.resultHero);
     show(els.resultHeroSub);
     show(els.resultTops);
@@ -820,13 +856,15 @@ function toast(text, kind = "") {
   state.toastAt = performance.now();
   els.toast.textContent = text;
   els.toast.classList.toggle("place", kind === "place");
+  els.toast.classList.toggle("egg", kind === "egg");
   els.toast.classList.remove("hidden");
   els.toast.style.animation = "none";
   void els.toast.offsetWidth;
   els.toast.style.animation = "";
+  const ms = kind === "egg" ? 1600 : kind === "place" ? 1100 : 700;
   setTimeout(() => {
     if (els.toast.textContent === text) els.toast.classList.add("hidden");
-  }, kind === "place" ? 1100 : 700);
+  }, ms);
 }
 
 function updatePlay(dt) {
@@ -860,6 +898,9 @@ function updatePlay(dt) {
     state.omen = null;
     beginDisaster(kind);
     return;
+  }
+  if (state.colorblindAt && elapsed >= state.colorblindAt) {
+    beginColorblind();
   }
 
   state.time += dt;
@@ -1138,7 +1179,8 @@ function drawLight(light) {
   const z = light.y - state.carY;
   if (z < 0.5 || z > 220) return;
   const color = colorOf(light, state.time);
-  const col = COLORS[color];
+  const gray = state.colorblind;
+  const col = gray ? "#d4d8e0" : COLORS[color];
   const p = project(0, z);
   const stopZ = z - STOP_LINE;
 
@@ -1176,11 +1218,17 @@ function drawLight(light) {
   ctx.stroke();
 
   const r = Math.max(2.1, boxW * 0.2);
-  const lamps = [
-    { c: "red", col: COLORS.red, dim: "#3a1420" },
-    { c: "yellow", col: COLORS.yellow, dim: "#3a3214" },
-    { c: "green", col: COLORS.green, dim: "#143a2c" },
-  ];
+  const lamps = gray
+    ? [
+        { c: "red", col: "#d4d8e0", dim: "#2c3038" },
+        { c: "yellow", col: "#d4d8e0", dim: "#2c3038" },
+        { c: "green", col: "#d4d8e0", dim: "#2c3038" },
+      ]
+    : [
+        { c: "red", col: COLORS.red, dim: "#3a1420" },
+        { c: "yellow", col: COLORS.yellow, dim: "#3a3214" },
+        { c: "green", col: COLORS.green, dim: "#143a2c" },
+      ];
   lamps.forEach((lamp, i) => {
     const ly = by + boxH * (0.2 + i * 0.3);
     const on = lamp.c === color;
@@ -1652,6 +1700,7 @@ function startGame() {
   rumble(10);
   resetRun("countdown");
   rollOmen();
+  rollColorblind();
   state.countdown = 3;
   state.holding = false;
   state.countShown = "";
@@ -2026,12 +2075,16 @@ if (import.meta.env.DEV) {
     state.omen = null;
     beginDisaster(type);
   };
-  window.__endRun = (reason = "time", dist = 847) => {
+  window.__colorblind = () => {
+    beginColorblind();
+  };
+  window.__endRun = (reason = "time", dist = 847, left) => {
     hide(els.title);
     hide(els.countdown);
     state.mode = "play";
     state.carY = dist;
     state.cleared = 11;
+    if (Number.isFinite(Number(left))) state.remaining = Number(left);
     endRun(reason);
   };
 }
