@@ -193,8 +193,15 @@ function toFeet(meters) {
   return Math.round((Number(meters) || 0) * FT_PER_M);
 }
 
-function formatFt(meters) {
-  return `${toFeet(meters).toLocaleString("en-US")} ft`;
+function formatFt(meters, { miles = false } = {}) {
+  const feet = toFeet(meters);
+  if (miles && feet >= 5280) {
+    return `${(feet / 5280).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} mi`;
+  }
+  return `${feet.toLocaleString("en-US")} ft`;
 }
 
 function toMph(mps) {
@@ -1781,7 +1788,7 @@ function renderBoard() {
       <span class="rank">${row.rank}</span>
       <img alt="" referrerpolicy="no-referrer" src="${safePhoto(row.photoUrl)}" />
       <span class="who">${safeText(row.name)}</span>
-      <span class="meters">${formatFt(row.shown)}</span>
+      <span class="meters">${formatFt(row.shown, { miles: boardMetric === "total" })}</span>
     `;
     els.boardList.appendChild(item);
   }
