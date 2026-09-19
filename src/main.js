@@ -1640,7 +1640,7 @@ function renderBoard(rows) {
   }
   if (rows.length) hide(els.boardEmpty);
   else {
-    els.boardEmpty.textContent = "No ranked runs yet. Sign in and don’t die.";
+    els.boardEmpty.textContent = "No ranked runs yet.";
     show(els.boardEmpty);
   }
 }
@@ -1651,7 +1651,7 @@ async function openBoard() {
   hide(els.result);
   show(els.board);
   show(els.authBar);
-  els.boardEmpty.textContent = "Loading the night shift…";
+  els.boardEmpty.textContent = "Loading…";
   show(els.boardEmpty);
   els.boardList.innerHTML = "";
   try {
@@ -1662,7 +1662,7 @@ async function openBoard() {
     renderBoard(rows);
   } catch (error) {
     console.warn(error);
-    els.boardEmpty.textContent = "Board is dark right now. Try again.";
+    els.boardEmpty.textContent = "Couldn’t load the leaderboard. Try again.";
     show(els.boardEmpty);
   }
 }
@@ -1751,19 +1751,71 @@ els.mute.addEventListener("click", () => {
 audio.onMuteChange(syncMuteUi);
 syncMuteUi();
 
-document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
-for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
-  document.addEventListener(type, (e) => e.preventDefault());
+function allowBoardScroll(target) {
+  return Boolean(target && target.closest && target.closest("#board-list"));
 }
+
+function isPinch(e) {
+  return e.touches.length > 1 || (typeof e.scale === "number" && e.scale !== 1);
+}
+
+document.addEventListener(
+  "touchmove",
+  (e) => {
+    if (isPinch(e)) {
+      e.preventDefault();
+      return;
+    }
+    if (allowBoardScroll(e.target)) return;
+    e.preventDefault();
+  },
+  { passive: false, capture: true }
+);
+for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false, capture: true });
+}
+document.addEventListener("dblclick", (e) => e.preventDefault(), { capture: true });
+document.addEventListener(
+  "click",
+  (e) => {
+    if (e.detail > 1) e.preventDefault();
+  },
+  true
+);
+
 let lastTapAt = 0;
+let lastTapX = 0;
+let lastTapY = 0;
+
+function isRepeatTap(touch) {
+  const dt = performance.now() - lastTapAt;
+  const dx = touch.clientX - lastTapX;
+  const dy = touch.clientY - lastTapY;
+  return dt < 500 && dx * dx + dy * dy < 4096;
+}
+
+function rememberTap(touch) {
+  lastTapAt = performance.now();
+  lastTapX = touch.clientX;
+  lastTapY = touch.clientY;
+}
+
+document.addEventListener(
+  "touchstart",
+  (e) => {
+    if (e.touches.length > 1) e.preventDefault();
+  },
+  { passive: false, capture: true }
+);
 document.addEventListener(
   "touchend",
   (e) => {
-    const now = performance.now();
-    if (now - lastTapAt < 350) e.preventDefault();
-    lastTapAt = now;
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+    if (isRepeatTap(touch)) e.preventDefault();
+    rememberTap(touch);
   },
-  { passive: false }
+  { passive: false, capture: true }
 );
 window.addEventListener("resize", resize);
 

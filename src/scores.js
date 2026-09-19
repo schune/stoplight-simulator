@@ -3,7 +3,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
   orderBy,
   query,
   serverTimestamp,
@@ -54,7 +53,6 @@ async function fetchBoardRest() {
         structuredQuery: {
           from: [{ collectionId: "board" }],
           orderBy: [{ field: { fieldPath: "best" }, direction: "DESCENDING" }],
-          limit: 10,
         },
       }),
     }
@@ -119,7 +117,7 @@ export async function saveRun(user, { distance, lights, reason, localBest }) {
 export async function fetchBoard() {
   try {
     const snap = await withTimeout(
-      getDocs(query(collection(db, BOARD), orderBy("best", "desc"), limit(10))),
+      getDocs(query(collection(db, BOARD), orderBy("best", "desc"))),
       4000,
       "board-timeout"
     );
