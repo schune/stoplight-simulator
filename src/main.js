@@ -9,7 +9,10 @@ const audio = createAudio();
 
 const BEST_KEY = "stoplight-sim-best-v2";
 const TOP_KEY = "stoplight-sim-tops-v2";
+const GHOST_KEY = "stoplight-sim-ghost-v2";
 const BOARD_METRIC_KEY = "stoplight-sim-board-metric";
+const SHARE_URL = "https://stoplightsimulator.com/";
+const GHOST_HZ = 10;
 const RUN_SECONDS = 60;
 const MAX_SPEED = 34;
 const ACCEL = 16;
@@ -66,6 +69,7 @@ const els = {
   resultLeft: document.getElementById("result-left"),
   resultPace: document.getElementById("result-pace"),
   resultTops: document.getElementById("result-tops"),
+  btnShare: document.getElementById("btn-share"),
   statDist: document.getElementById("stat-dist"),
   statLights: document.getElementById("stat-lights"),
   statBest: document.getElementById("stat-best"),
@@ -172,6 +176,8 @@ const state = {
   resumeMode: null,
   belt: 0,
   ftMark: 0,
+  ghostTape: [],
+  ghostBest: [],
 };
 
 let width = 390;
@@ -306,6 +312,126 @@ function nightLook() {
 
 function getBest() {
   return Number(localStorage.getItem(BEST_KEY) || 0);
+}
+
+function loadGhost() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(GHOST_KEY) || "[]");
+    if (Array.isArray(raw) && raw.length) {
+      return raw.map(Number).filter((n) => Number.isFinite(n) && n >= 0);
+    }
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+function saveGhost(tape) {
+  if (!tape?.length) return;
+  localStorage.setItem(
+    GHOST_KEY,
+    JSON.stringify(tape.map((n) => Math.round(Number(n) * 10) / 10))
+  );
+}
+
+function stampGhost() {
+  const elapsed = Math.max(0, RUN_SECONDS - state.remaining);
+  const idx = Math.max(0, Math.floor(elapsed * GHOST_HZ));
+  while (state.ghostTape.length <= idx) state.ghostTape.push(state.carY);
+  state.ghostTape[idx] = state.carY;
+}
+
+function ghostWorldY() {
+  const tape = state.ghostBest;
+  const best = getBest();
+  if (tape.length >= 2) {
+    const elapsed = Math.max(0, RUN_SECONDS - state.remaining);
+    const i = elapsed * GHOST_HZ;
+    const a = Math.min(tape.length - 1, Math.floor(i));
+    const b = Math.min(tape.length - 1, a + 1);
+    const t = Math.min(1, i - a);
+    return tape[a] * (1 - t) + tape[b] * t;
+  }
+  return best > 0 ? best : null;
+}
+
+function boardName(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length < 2) return parts[0] || "Night driver";
+  const initial = [...parts[0]][0];
+  if (!initial) return parts.slice(1).join(" ");
+  return `${initial.toUpperCase()}. ${parts.slice(1).join(" ")}`;
+}
+
+function sharePayload(run) {
+  if (!run) {
+    return {
+      title: "Stoplight Simulator",
+      text: "How far can you get in 60 seconds?",
+      url: SHARE_URL,
+    };
+  }
+  const feet = formatFt(run.distance);
+  const lights = `${run.lights} light${run.lights === 1 ? "" : "s"}`;
+  if (run.reason === "red") {
+    const left = Math.max(0, Number(run.remaining) || 0).toFixed(1);
+    return {
+      title: "Stoplight Simulator",
+      text: `Caught red at ${feet} (${lights}) with ${left}s left.`,
+      url: SHARE_URL,
+    };
+  }
+  const omen = OMEN[run.reason];
+  if (omen) {
+    return {
+      title: "Stoplight Simulator",
+      text: `${omen.title}. ${feet}. ${lights}.`,
+      url: SHARE_URL,
+    };
+  }
+  return {
+    title: "Stoplight Simulator",
+    text: `${feet}. ${lights}. How far can you get?`,
+    url: SHARE_URL,
+  };
+}
+
+async function shareRun() {
+  audio.ui();
+  const payload = sharePayload(state.lastRun);
+  const joined = `${payload.text}\n${payload.url}`;
+  try {
+    if (navigator.share) {
+      await navigator.share(payload);
+      return;
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+  }
+  try {
+    await navigator.clipboard.writeText(joined);
+    toast("COPIED");
+    return;
+  } catch {
+    /* fall through */
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = joined;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    toast(ok ? "COPIED" : "COPY FAILED");
+  } catch {
+    toast("COPY FAILED");
+  }
 }
 
 function setBest(n) {
@@ -463,6 +589,7 @@ function resetRun(mode) {
   state.resumeMode = null;
   state.belt = 0;
   state.ftMark = 0;
+  state.ghostTape = [];
 }
 
 const hideTimers = new WeakMap();
@@ -760,6 +887,7 @@ function renderTops(tops, rank) {
 
 function endRun(reason) {
   if (state.mode === "result") return;
+  stampGhost();
   const dist = Math.round(state.carY);
   const rec = recordTop(dist);
   const best = getBest();
@@ -767,7 +895,12 @@ function endRun(reason) {
   const red = reason === "red";
   const timed = !red && !omen;
   state.mode = "result";
-  state.lastRun = { distance: dist, lights: state.cleared, reason };
+  state.lastRun = {
+    distance: dist,
+    lights: state.cleared,
+    reason,
+    remaining: Math.max(0, state.remaining),
+  };
   hide(els.hud);
   hide(els.pedalWrap);
   hide(els.countdown);
@@ -775,6 +908,7 @@ function endRun(reason) {
   hide(els.btnPause);
   show(els.result);
   show(els.authBar);
+  show(els.btnBoard);
   els.result.classList.toggle("is-time", timed);
   els.resultHero.classList.remove("punch", "is-best");
   els.resultNew.classList.remove("place");
@@ -846,6 +980,7 @@ function endRun(reason) {
   countUp(els.statLights, state.cleared, "", 480);
   els.statBest.textContent = formatFt(best);
   els.titleBest.textContent = String(toFeet(best));
+  if (rec.isNewBest && state.ghostTape.length > 3) saveGhost(state.ghostTape);
   if (timed && !rec.isNewBest && rec.rank === 0) flashScreen("good", 420);
   syncAuthUi();
   void postRun();
@@ -906,6 +1041,7 @@ function updatePlay(dt) {
   state.time += dt;
   state.remaining -= dt;
   integrate(dt);
+  stampGhost();
 
   if (state.holding && !state.wasHolding) {
     audio.gas();
@@ -968,6 +1104,7 @@ function updatePlay(dt) {
   if (state.remaining <= 0) {
     state.remaining = 0;
     state.speed = 0;
+    stampGhost();
     endRun("time");
   }
 }
@@ -1445,13 +1582,19 @@ function drawTornado() {
   }
   ctx.restore();
 }
-function drawCar() {
+function drawCar(opts = {}) {
+  const ghost = Boolean(opts.ghost);
   const h = 96;
-  const x = width / 2;
-  const y = carScreenY() + 10;
-  const bob = REDUCE || state.speed < 8 ? 0 : Math.sin(state.time * 5.2) * Math.min(0.45, (state.speed - 8) * 0.02);
-  const braking = !state.holding && state.speed > 1;
-  const pose = carDisasterPose();
+  const x = opts.x ?? width / 2;
+  const y = opts.y ?? carScreenY() + 10;
+  const extraScale = opts.scale ?? 1;
+  const alpha = opts.alpha ?? 1;
+  const bob = ghost || REDUCE || state.speed < 8 ? 0 : Math.sin(state.time * 5.2) * Math.min(0.45, (state.speed - 8) * 0.02);
+  const braking = ghost ? false : !state.holding && state.speed > 1;
+  const pose = ghost ? { x: 0, y: 0, rot: 0, scale: 1, hideCone: true } : carDisasterPose();
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
 
   if (!pose.hideCone) {
     const cone = ctx.createLinearGradient(x, y - h, x, horizon + 8);
@@ -1468,11 +1611,10 @@ function drawCar() {
     ctx.fill();
   }
 
-  ctx.save();
   ctx.translate(x + pose.x, y + bob + pose.y);
   ctx.rotate(pose.rot);
-  ctx.scale(pose.scale, pose.scale);
-  if (state.mode === "crash") {
+  ctx.scale(pose.scale * extraScale, pose.scale * extraScale);
+  if (!ghost && state.mode === "crash") {
     ctx.rotate(-0.14 - state.crashT * 0.05);
     ctx.translate(-12 - state.crashT * 10, 8);
   }
@@ -1482,12 +1624,12 @@ function drawCar() {
   ctx.ellipse(0, 16, 54, 12, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = braking ? "rgba(255, 45, 74, 0.3)" : "rgba(34, 227, 138, 0.14)";
+  ctx.fillStyle = braking ? "rgba(255, 45, 74, 0.3)" : ghost ? "rgba(200, 210, 230, 0.12)" : "rgba(34, 227, 138, 0.14)";
   ctx.beginPath();
   ctx.ellipse(0, 12, 52, 16, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#c49218";
+  ctx.fillStyle = ghost ? "#7b8290" : "#c49218";
   ctx.beginPath();
   ctx.moveTo(-42, 6);
   ctx.quadraticCurveTo(-46, -6, -28, -78);
@@ -1496,7 +1638,7 @@ function drawCar() {
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = "#f0c12a";
+  ctx.fillStyle = ghost ? "#a8b0be" : "#f0c12a";
   ctx.beginPath();
   ctx.moveTo(-34, 4);
   ctx.quadraticCurveTo(-36, -10, -24, -76);
@@ -1517,7 +1659,7 @@ function drawCar() {
   ctx.fillStyle = "#16181f";
   roundRect(-16, -94, 32, 16, 4);
   ctx.fill();
-  ctx.fillStyle = COLORS.yellow;
+  ctx.fillStyle = ghost ? "#d7dce6" : COLORS.yellow;
   roundRect(-11, -90, 22, 8, 2);
   ctx.fill();
   ctx.fillStyle = "rgba(255,255,255,0.35)";
@@ -1535,12 +1677,12 @@ function drawCar() {
   roundRect(14, -10, 16, 7, 2);
   ctx.fill();
   if (braking) {
-    ctx.globalAlpha = 0.45;
+    ctx.globalAlpha = 0.45 * alpha;
     ctx.beginPath();
     ctx.ellipse(-22, -6, 16, 8, 0, 0, Math.PI * 2);
     ctx.ellipse(22, -6, 16, 8, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = alpha;
   }
 
   ctx.fillStyle = "#2a2e38";
@@ -1549,9 +1691,21 @@ function drawCar() {
   ctx.fillStyle = "#d7dce6";
   ctx.font = "6px IBM Plex Mono, monospace";
   ctx.textAlign = "center";
-  ctx.fillText("NITE", 0, 3);
+  ctx.fillText(ghost ? "BEST" : "NITE", 0, 3);
 
   ctx.restore();
+}
+
+function drawGhost() {
+  if (state.mode !== "play" && state.mode !== "countdown" && state.mode !== "pause") return;
+  const gy = ghostWorldY();
+  if (gy == null) return;
+  const z = gy - state.carY;
+  if (!Number.isFinite(z) || z < 5 || z > 220) return;
+  const p = project(0, z);
+  const scale = Math.max(0.1, (p.halfPx * 0.4) / 42);
+  const alpha = clamp((220 - z) / 90, 0.16, 0.34);
+  drawCar({ ghost: true, x: p.x, y: p.y + 6, scale, alpha });
 }
 
 function updateParticles(dt) {
@@ -1612,6 +1766,7 @@ function render() {
     .filter((x) => x.z > 0.5 && x.z < 230)
     .sort((a, b) => b.z - a.z);
   for (const item of lights) drawLight(item.light);
+  drawGhost();
   if (state.disasterType !== "sinkhole" || state.disasterT < 1.1) drawCar();
   drawTornado();
   drawMeteor();
@@ -1701,6 +1856,7 @@ function startGame() {
   resetRun("countdown");
   rollOmen();
   rollColorblind();
+  state.ghostBest = loadGhost();
   state.countdown = 3;
   state.holding = false;
   state.countShown = "";
@@ -1730,6 +1886,7 @@ function backToTitle() {
   hide(els.countdown);
   show(els.title);
   show(els.authBar);
+  show(els.btnBoard);
 }
 
 function setBestLabel(n) {
@@ -1836,7 +1993,7 @@ function renderBoard() {
     item.innerHTML = `
       <span class="rank">${row.rank}</span>
       <img alt="" referrerpolicy="no-referrer" src="${safePhoto(row.photoUrl)}" />
-      <span class="who">${safeText(row.name)}</span>
+      <span class="who">${safeText(boardName(row.name))}</span>
       <span class="meters">${formatFt(row.shown, { miles: boardMetric === "total" })}</span>
     `;
     els.boardList.appendChild(item);
@@ -1869,6 +2026,7 @@ async function openBoard() {
   hide(els.result);
   show(els.board);
   show(els.authBar);
+  hide(els.btnBoard);
   syncBoardTabs();
   els.boardEmpty.textContent = "Loading…";
   show(els.boardEmpty);
@@ -1898,6 +2056,7 @@ function closeBoard() {
     state.mode = "title";
   }
   show(els.authBar);
+  show(els.btnBoard);
 }
 
 function isUiButton(target) {
@@ -1952,6 +2111,7 @@ window.addEventListener("keyup", (e) => {
 
 document.getElementById("btn-start").addEventListener("click", startGame);
 document.getElementById("btn-retry").addEventListener("click", startGame);
+els.btnShare.addEventListener("click", () => void shareRun());
 document.getElementById("btn-menu").addEventListener("click", () => void openBoard());
 els.btnPause.addEventListener("click", () => {
   if (state.mode === "pause") resumeGame();

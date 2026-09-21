@@ -665,6 +665,15 @@ h2 {
   max-width: 20em;
 }
 
+#board {
+  justify-content: flex-start;
+  padding-top: calc(72px + var(--safe-top));
+}
+
+#board #btn-board-close {
+  margin-top: auto;
+}
+
 #board .flavor {
   margin-bottom: 12px;
 }
@@ -887,7 +896,7 @@ button.ghost {
   gap: 8px;
   flex: 1 1 auto;
   min-height: 180px;
-  max-height: 52vh;
+  max-height: none;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
