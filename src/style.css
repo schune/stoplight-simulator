@@ -1048,6 +1048,10 @@ button.chip:disabled {
   right: 14px;
 }
 
+html.ghost-page #title {
+  display: none !important;
+}
+
 #pause h2 {
   font-size: clamp(40px, 12vw, 56px);
 }

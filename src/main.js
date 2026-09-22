@@ -3,6 +3,8 @@ import { createAudio } from "./audio.js";
 import { authState, onAuthChange, signInWithGoogle, signOut, startAuth } from "./auth.js";
 import { fetchBoard, loadProfile, rankBoard, saveRun } from "./scores.js";
 
+const GHOST_PAGE = /^\/ghost\/?$/.test(location.pathname);
+
 const canvas = document.getElementById("view");
 const ctx = canvas.getContext("2d");
 const audio = createAudio();
@@ -326,6 +328,17 @@ function loadGhost() {
   return [];
 }
 
+function raceGhost() {
+  const saved = loadGhost();
+  if (saved.length >= 2) return saved;
+  const best = getBest();
+  const dist = best > 40 ? best : 400;
+  const steps = Math.round(RUN_SECONDS * GHOST_HZ);
+  const tape = [];
+  for (let i = 0; i <= steps; i++) tape.push((dist * i) / steps);
+  return tape;
+}
+
 function saveGhost(tape) {
   if (!tape?.length) return;
   localStorage.setItem(
@@ -343,7 +356,6 @@ function stampGhost() {
 
 function ghostWorldY() {
   const tape = state.ghostBest;
-  const best = getBest();
   if (tape.length >= 2) {
     const elapsed = Math.max(0, RUN_SECONDS - state.remaining);
     const i = elapsed * GHOST_HZ;
@@ -352,7 +364,7 @@ function ghostWorldY() {
     const t = Math.min(1, i - a);
     return tape[a] * (1 - t) + tape[b] * t;
   }
-  return best > 0 ? best : null;
+  return null;
 }
 
 function boardName(name) {
@@ -1701,11 +1713,21 @@ function drawGhost() {
   const gy = ghostWorldY();
   if (gy == null) return;
   const z = gy - state.carY;
-  if (!Number.isFinite(z) || z < 5 || z > 220) return;
+  if (!Number.isFinite(z) || z < 6 || z > 200) return;
   const p = project(0, z);
-  const scale = (p.halfPx * 0.22) / 42;
-  const alpha = clamp((200 - z) / 420, 0.18, 0.36);
-  drawCar({ ghost: true, x: p.x, y: p.y, scale, alpha });
+  const thick = Math.max(1, (1 - p.t) * 1.6);
+  const span = p.halfPx * 0.42;
+  const size = Math.max(7, Math.round(lerp(11, 7, p.t)));
+  ctx.save();
+  ctx.fillStyle = "#c5ccd8";
+  ctx.globalAlpha = 0.1;
+  ctx.fillRect(p.x - span, p.y, span * 2, thick);
+  ctx.globalAlpha = 0.16;
+  ctx.font = `600 ${size}px "IBM Plex Mono", monospace`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText("BEST", p.x + p.halfPx + lerp(10, 4, p.t), p.y);
+  ctx.restore();
 }
 
 function updateParticles(dt) {
@@ -1761,12 +1783,12 @@ function render() {
   drawSinkhole();
   drawBuildings();
   drawStreetLamps();
+  drawGhost();
   const lights = state.lights
     .map((light) => ({ light, z: light.y - state.carY }))
     .filter((x) => x.z > 0.5 && x.z < 230)
     .sort((a, b) => b.z - a.z);
   for (const item of lights) drawLight(item.light);
-  drawGhost();
   if (state.disasterType !== "sinkhole" || state.disasterT < 1.1) drawCar();
   drawTornado();
   drawMeteor();
@@ -1856,7 +1878,7 @@ function startGame() {
   resetRun("countdown");
   rollOmen();
   rollColorblind();
-  state.ghostBest = loadGhost();
+  state.ghostBest = raceGhost();
   state.countdown = 3;
   state.holding = false;
   state.countShown = "";
@@ -1875,6 +1897,10 @@ function startGame() {
 }
 
 function backToTitle() {
+  if (GHOST_PAGE) {
+    location.href = "/";
+    return;
+  }
   audio.ui();
   resetRun("title");
   hide(els.result);
@@ -2205,6 +2231,11 @@ window.addEventListener("resize", resize);
 
 els.titleBest.textContent = String(toFeet(getBest()));
 resetRun("title");
+if (GHOST_PAGE) {
+  document.title = "Ghost — Stoplight Simulator";
+  const robots = document.querySelector('meta[name="robots"]');
+  if (robots) robots.setAttribute("content", "noindex");
+}
 resize();
 syncAuthUi();
 onAuthChange((next) => {
@@ -2223,6 +2254,8 @@ requestAnimationFrame((t) => {
   last = t;
   tick(t);
 });
+
+if (GHOST_PAGE) startGame();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
