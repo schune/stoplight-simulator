@@ -1774,56 +1774,61 @@ function drawSedanBody(braking, alpha) {
 }
 
 function drawSportBody(braking, alpha) {
-  ctx.fillStyle = "#14161c";
-  ctx.fillRect(-24, -78, 3, 22);
-  ctx.fillRect(21, -78, 3, 22);
-  roundRect(-36, -84, 72, 8, 2);
-  ctx.fill();
-
   ctx.fillStyle = "#8e1224";
   ctx.beginPath();
   ctx.moveTo(-50, 10);
-  ctx.quadraticCurveTo(-54, -4, -32, -36);
-  ctx.lineTo(32, -36);
-  ctx.quadraticCurveTo(54, -4, 50, 10);
+  ctx.quadraticCurveTo(-54, -10, -34, -46);
+  ctx.quadraticCurveTo(-26, -76, 0, -78);
+  ctx.quadraticCurveTo(26, -76, 34, -46);
+  ctx.quadraticCurveTo(54, -10, 50, 10);
   ctx.closePath();
   ctx.fill();
 
   ctx.fillStyle = "#e23a4e";
   ctx.beginPath();
   ctx.moveTo(-44, 6);
-  ctx.quadraticCurveTo(-46, -2, -28, -32);
-  ctx.lineTo(28, -32);
-  ctx.quadraticCurveTo(46, -2, 44, 6);
+  ctx.quadraticCurveTo(-47, -10, -29, -44);
+  ctx.quadraticCurveTo(-22, -72, 0, -74);
+  ctx.quadraticCurveTo(22, -72, 29, -44);
+  ctx.quadraticCurveTo(47, -10, 44, 6);
   ctx.closePath();
   ctx.fill();
 
   ctx.fillStyle = "#ffd0d6";
-  ctx.fillRect(-2, -30, 4, 22);
+  ctx.fillRect(-2, -72, 4, 20);
 
   ctx.fillStyle = "#111820";
   ctx.beginPath();
-  ctx.moveTo(-18, -28);
-  ctx.lineTo(-11, -62);
-  ctx.lineTo(11, -62);
-  ctx.lineTo(18, -28);
+  ctx.moveTo(-20, -18);
+  ctx.lineTo(-14, -50);
+  ctx.lineTo(14, -50);
+  ctx.lineTo(20, -18);
   ctx.closePath();
   ctx.fill();
   ctx.fillStyle = "rgba(170, 210, 255, 0.24)";
   ctx.beginPath();
-  ctx.moveTo(-14, -32);
-  ctx.lineTo(-8, -56);
-  ctx.lineTo(8, -56);
-  ctx.lineTo(14, -32);
+  ctx.moveTo(-11, -46);
+  ctx.lineTo(11, -46);
+  ctx.lineTo(9, -38);
+  ctx.lineTo(-9, -38);
   ctx.closePath();
   ctx.fill();
 
   ctx.fillStyle = braking ? COLORS.red : "#4a121c";
-  roundRect(-40, -2, 22, 4, 1);
+  roundRect(-40, 0, 22, 4, 1);
   ctx.fill();
-  roundRect(18, -2, 22, 4, 1);
+  roundRect(18, 0, 22, 4, 1);
   ctx.fill();
   drawBrakeGlow(braking, alpha, 2);
+
+  ctx.fillStyle = "#14161c";
+  ctx.fillRect(-26, -10, 3, 8);
+  ctx.fillRect(23, -10, 3, 8);
+  roundRect(-48, -15, 96, 7, 2);
+  ctx.fill();
+  ctx.fillRect(-48, -18, 4, 12);
+  ctx.fillRect(44, -18, 4, 12);
+
   drawPlate("4K");
 }
 
