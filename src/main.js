@@ -2322,6 +2322,7 @@ document.getElementById("btn-start").addEventListener("click", startGame);
 document.getElementById("btn-retry").addEventListener("click", startGame);
 els.btnShare.addEventListener("click", () => void shareRun());
 document.getElementById("btn-menu").addEventListener("click", () => void openBoard());
+document.getElementById("btn-home").addEventListener("click", backToTitle);
 els.btnPause.addEventListener("click", () => {
   if (state.mode === "pause") resumeGame();
   else pauseGame();
