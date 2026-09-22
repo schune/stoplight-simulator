@@ -10,6 +10,8 @@ const ctx = canvas.getContext("2d");
 const audio = createAudio();
 
 const BEST_KEY = "stoplight-sim-best-v2";
+const CAR_KEY = "stoplight-sim-car-v1";
+const SPORT_FEET = 4000;
 const TOP_KEY = "stoplight-sim-tops-v2";
 const GHOST_KEY = "stoplight-sim-ghost-v2";
 const BOARD_METRIC_KEY = "stoplight-sim-board-metric";
@@ -97,6 +99,12 @@ const els = {
   btnResume: document.getElementById("btn-resume"),
   btnRestart: document.getElementById("btn-restart"),
   btnExit: document.getElementById("btn-exit"),
+  garage: document.getElementById("garage"),
+  cars: {
+    taxi: document.getElementById("car-taxi"),
+    sedan: document.getElementById("car-sedan"),
+    sport: document.getElementById("car-sport"),
+  },
 };
 
 const flavorRed = [
@@ -180,6 +188,8 @@ const state = {
   ftMark: 0,
   ghostTape: [],
   ghostBest: [],
+  car: "taxi",
+  sportAnnounced: false,
 };
 
 let width = 390;
@@ -314,6 +324,57 @@ function nightLook() {
 
 function getBest() {
   return Number(localStorage.getItem(BEST_KEY) || 0);
+}
+
+function savedCar() {
+  const id = localStorage.getItem(CAR_KEY);
+  return id === "sedan" || id === "sport" ? id : "taxi";
+}
+
+function carUnlocked(id) {
+  if (id === "sedan") return Boolean(authState.user);
+  if (id === "sport") return toFeet(getBest()) >= SPORT_FEET;
+  return id === "taxi";
+}
+
+function activeCar() {
+  const id = savedCar();
+  if (id === "sedan" && !authState.ready) return state.car === "sedan" ? "sedan" : "taxi";
+  return carUnlocked(id) ? id : "taxi";
+}
+
+function syncGarage() {
+  if (authState.ready && !carUnlocked(savedCar())) localStorage.setItem(CAR_KEY, "taxi");
+  state.car = activeCar();
+  for (const id of ["taxi", "sedan", "sport"]) {
+    const btn = els.cars[id];
+    if (!btn) continue;
+    const open = id === "sedan" && !authState.ready ? false : carUnlocked(id);
+    const on = state.car === id;
+    btn.classList.toggle("is-on", on);
+    btn.classList.toggle("is-locked", !open);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    const label = btn.querySelector(".car-label");
+    if (!label) continue;
+    if (id === "taxi") label.textContent = "TAXI";
+    if (id === "sedan") label.textContent = open ? "CAR" : "SIGN IN";
+    if (id === "sport") label.textContent = open ? "SPORT" : "4,000";
+  }
+}
+
+function chooseCar(id) {
+  if (!carUnlocked(id)) return;
+  localStorage.setItem(CAR_KEY, id);
+  syncGarage();
+}
+
+function maybeUnlockSport() {
+  if (state.sportAnnounced || state.mode !== "play") return;
+  if (toFeet(getBest()) >= SPORT_FEET) return;
+  if (toFeet(state.carY) < SPORT_FEET) return;
+  state.sportAnnounced = true;
+  toast("SPORT UNLOCKED", "place");
+  syncGarage();
 }
 
 function loadGhost() {
@@ -602,6 +663,7 @@ function resetRun(mode) {
   state.belt = 0;
   state.ftMark = 0;
   state.ghostTape = [];
+  state.sportAnnounced = false;
 }
 
 const hideTimers = new WeakMap();
@@ -1594,53 +1656,28 @@ function drawTornado() {
   }
   ctx.restore();
 }
-function drawCar(opts = {}) {
-  const ghost = Boolean(opts.ghost);
-  const h = 96;
-  const x = opts.x ?? width / 2;
-  const y = opts.y ?? carScreenY() + 10;
-  const extraScale = opts.scale ?? 1;
-  const alpha = opts.alpha ?? 1;
-  const bob = ghost || REDUCE || state.speed < 8 ? 0 : Math.sin(state.time * 5.2) * Math.min(0.45, (state.speed - 8) * 0.02);
-  const braking = ghost ? false : !state.holding && state.speed > 1;
-  const pose = ghost ? { x: 0, y: 0, rot: 0, scale: 1, hideCone: true } : carDisasterPose();
-
-  ctx.save();
-  ctx.globalAlpha *= alpha;
-
-  if (!pose.hideCone) {
-    const cone = ctx.createLinearGradient(x, y - h, x, horizon + 8);
-    cone.addColorStop(0, "rgba(255, 244, 210, 0.28)");
-    cone.addColorStop(0.45, "rgba(255, 236, 190, 0.08)");
-    cone.addColorStop(1, "rgba(255, 244, 210, 0)");
-    ctx.fillStyle = cone;
-    ctx.beginPath();
-    ctx.moveTo(x - 16, y - h * 0.5 + bob);
-    ctx.lineTo(x - width * 0.24, horizon + 18);
-    ctx.lineTo(x + width * 0.24, horizon + 18);
-    ctx.lineTo(x + 16, y - h * 0.5 + bob);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  ctx.translate(x + pose.x, y + bob + pose.y);
-  ctx.rotate(pose.rot);
-  ctx.scale(pose.scale * extraScale, pose.scale * extraScale);
-  if (!ghost && state.mode === "crash") {
-    ctx.rotate(-0.14 - state.crashT * 0.05);
-    ctx.translate(-12 - state.crashT * 10, 8);
-  }
-
-  ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
-  ctx.beginPath();
-  ctx.ellipse(0, 16, 54, 12, 0, 0, Math.PI * 2);
+function drawPlate(text) {
+  ctx.fillStyle = "#2a2e38";
+  roundRect(-10, -2, 20, 6, 1);
   ctx.fill();
+  ctx.fillStyle = "#d7dce6";
+  ctx.font = "6px IBM Plex Mono, monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(text, 0, 3);
+}
 
-  ctx.fillStyle = braking ? "rgba(255, 45, 74, 0.3)" : ghost ? "rgba(200, 210, 230, 0.12)" : "rgba(34, 227, 138, 0.14)";
+function drawBrakeGlow(braking, alpha, y) {
+  if (!braking) return;
+  ctx.globalAlpha = 0.45 * alpha;
+  ctx.fillStyle = COLORS.red;
   ctx.beginPath();
-  ctx.ellipse(0, 12, 52, 16, 0, 0, Math.PI * 2);
+  ctx.ellipse(-22, y, 16, 8, 0, 0, Math.PI * 2);
+  ctx.ellipse(22, y, 16, 8, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.globalAlpha = alpha;
+}
 
+function drawTaxiBody(ghost, braking, alpha) {
   ctx.fillStyle = ghost ? "#7b8290" : "#c49218";
   ctx.beginPath();
   ctx.moveTo(-42, 6);
@@ -1688,22 +1725,159 @@ function drawCar(opts = {}) {
   ctx.fill();
   roundRect(14, -10, 16, 7, 2);
   ctx.fill();
-  if (braking) {
-    ctx.globalAlpha = 0.45 * alpha;
+  drawBrakeGlow(braking, alpha, -6);
+  drawPlate(ghost ? "BEST" : "NITE");
+}
+
+function drawSedanBody(braking, alpha) {
+  ctx.fillStyle = "#8e97a6";
+  ctx.beginPath();
+  ctx.moveTo(-40, 8);
+  ctx.quadraticCurveTo(-46, -8, -28, -74);
+  ctx.lineTo(28, -74);
+  ctx.quadraticCurveTo(46, -8, 40, 8);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#e6ebf2";
+  ctx.beginPath();
+  ctx.moveTo(-34, 5);
+  ctx.quadraticCurveTo(-38, -6, -22, -72);
+  ctx.lineTo(22, -72);
+  ctx.quadraticCurveTo(38, -6, 34, 5);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#111820";
+  roundRect(-16, -66, 32, 28, 6);
+  ctx.fill();
+  ctx.fillStyle = "rgba(170, 210, 255, 0.2)";
+  roundRect(-13, -63, 26, 10, 4);
+  ctx.fill();
+
+  ctx.fillStyle = "#c5ccd6";
+  ctx.fillRect(-26, -30, 52, 3);
+
+  ctx.fillStyle = "#b7c0cc";
+  roundRect(-36, -2, 14, 10, 2);
+  ctx.fill();
+  roundRect(22, -2, 14, 10, 2);
+  ctx.fill();
+
+  ctx.fillStyle = braking ? COLORS.red : "#6e2834";
+  roundRect(-32, -16, 12, 14, 2);
+  ctx.fill();
+  roundRect(20, -16, 12, 14, 2);
+  ctx.fill();
+  drawBrakeGlow(braking, alpha, -8);
+  drawPlate("CITY");
+}
+
+function drawSportBody(braking, alpha) {
+  ctx.fillStyle = "#14161c";
+  ctx.fillRect(-24, -78, 3, 22);
+  ctx.fillRect(21, -78, 3, 22);
+  roundRect(-36, -84, 72, 8, 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#8e1224";
+  ctx.beginPath();
+  ctx.moveTo(-50, 10);
+  ctx.quadraticCurveTo(-54, -4, -32, -36);
+  ctx.lineTo(32, -36);
+  ctx.quadraticCurveTo(54, -4, 50, 10);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#e23a4e";
+  ctx.beginPath();
+  ctx.moveTo(-44, 6);
+  ctx.quadraticCurveTo(-46, -2, -28, -32);
+  ctx.lineTo(28, -32);
+  ctx.quadraticCurveTo(46, -2, 44, 6);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#ffd0d6";
+  ctx.fillRect(-2, -30, 4, 22);
+
+  ctx.fillStyle = "#111820";
+  ctx.beginPath();
+  ctx.moveTo(-18, -28);
+  ctx.lineTo(-11, -62);
+  ctx.lineTo(11, -62);
+  ctx.lineTo(18, -28);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(170, 210, 255, 0.24)";
+  ctx.beginPath();
+  ctx.moveTo(-14, -32);
+  ctx.lineTo(-8, -56);
+  ctx.lineTo(8, -56);
+  ctx.lineTo(14, -32);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = braking ? COLORS.red : "#4a121c";
+  roundRect(-40, -2, 22, 4, 1);
+  ctx.fill();
+  roundRect(18, -2, 22, 4, 1);
+  ctx.fill();
+  drawBrakeGlow(braking, alpha, 2);
+  drawPlate("4K");
+}
+
+function drawCar(opts = {}) {
+  const ghost = Boolean(opts.ghost);
+  const h = 96;
+  const x = opts.x ?? width / 2;
+  const y = opts.y ?? carScreenY() + 10;
+  const extraScale = opts.scale ?? 1;
+  const alpha = opts.alpha ?? 1;
+  const bob = ghost || REDUCE || state.speed < 8 ? 0 : Math.sin(state.time * 5.2) * Math.min(0.45, (state.speed - 8) * 0.02);
+  const braking = ghost ? false : !state.holding && state.speed > 1;
+  const pose = ghost ? { x: 0, y: 0, rot: 0, scale: 1, hideCone: true } : carDisasterPose();
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+
+  if (!pose.hideCone) {
+    const cone = ctx.createLinearGradient(x, y - h, x, horizon + 8);
+    cone.addColorStop(0, "rgba(255, 244, 210, 0.28)");
+    cone.addColorStop(0.45, "rgba(255, 236, 190, 0.08)");
+    cone.addColorStop(1, "rgba(255, 244, 210, 0)");
+    ctx.fillStyle = cone;
     ctx.beginPath();
-    ctx.ellipse(-22, -6, 16, 8, 0, 0, Math.PI * 2);
-    ctx.ellipse(22, -6, 16, 8, 0, 0, Math.PI * 2);
+    ctx.moveTo(x - 16, y - h * 0.5 + bob);
+    ctx.lineTo(x - width * 0.24, horizon + 18);
+    ctx.lineTo(x + width * 0.24, horizon + 18);
+    ctx.lineTo(x + 16, y - h * 0.5 + bob);
+    ctx.closePath();
     ctx.fill();
-    ctx.globalAlpha = alpha;
   }
 
-  ctx.fillStyle = "#2a2e38";
-  roundRect(-10, -2, 20, 6, 1);
+  ctx.translate(x + pose.x, y + bob + pose.y);
+  ctx.rotate(pose.rot);
+  ctx.scale(pose.scale * extraScale, pose.scale * extraScale);
+  if (!ghost && state.mode === "crash") {
+    ctx.rotate(-0.14 - state.crashT * 0.05);
+    ctx.translate(-12 - state.crashT * 10, 8);
+  }
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+  ctx.beginPath();
+  ctx.ellipse(0, 16, 54, 12, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#d7dce6";
-  ctx.font = "6px IBM Plex Mono, monospace";
-  ctx.textAlign = "center";
-  ctx.fillText(ghost ? "BEST" : "NITE", 0, 3);
+
+  ctx.fillStyle = braking ? "rgba(255, 45, 74, 0.3)" : ghost ? "rgba(200, 210, 230, 0.12)" : "rgba(34, 227, 138, 0.14)";
+  ctx.beginPath();
+  ctx.ellipse(0, 12, 52, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const kind = ghost ? "ghost" : state.car;
+  if (kind === "sport") drawSportBody(braking, alpha);
+  else if (kind === "sedan") drawSedanBody(braking, alpha);
+  else drawTaxiBody(ghost, braking, alpha);
 
   ctx.restore();
 }
@@ -1820,6 +1994,7 @@ function updateHud() {
   els.pedal.classList.toggle("held", state.holding);
   els.pedal.classList.toggle("braking", !state.holding && state.speed > 1);
   els.pedalState.textContent = state.holding ? "GO" : "HOLD";
+  maybeUnlockSport();
 }
 
 function tick(now) {
@@ -1949,6 +2124,7 @@ function syncAuthUi() {
   } else {
     hide(els.authError);
   }
+  syncGarage();
 }
 
 async function postRun() {
@@ -1964,6 +2140,7 @@ async function postRun() {
     });
     setBest(best);
     setBestLabel(best);
+    syncGarage();
   } catch (error) {
     console.warn(error);
     authState.error = "Could not post that run to the board.";
@@ -1979,6 +2156,7 @@ async function mergeCloudBest() {
     const best = Math.max(getBest(), Number(profile?.best) || 0);
     setBest(best);
     setBestLabel(best);
+    syncGarage();
     if (state.lastRun) await postRun();
     else if (best > (Number(profile?.best) || 0)) {
       await saveRun(user, {
@@ -2153,6 +2331,21 @@ els.btnBoard.addEventListener("click", () => void openBoard());
 els.btnBoardClose.addEventListener("click", closeBoard);
 els.tabBest.addEventListener("click", () => setBoardMetric("best"));
 els.tabTotal.addEventListener("click", () => setBoardMetric("total"));
+els.garage.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-car]");
+  if (!btn) return;
+  const id = btn.dataset.car;
+  audio.unlock();
+  if (!carUnlocked(id)) {
+    if (id === "sedan") {
+      toast("SIGN IN TO UNLOCK", "place");
+      void signInWithGoogle();
+    } else toast("HIT 4,000 FT", "place");
+    return;
+  }
+  chooseCar(id);
+  audio.ui();
+});
 els.mute.addEventListener("click", () => {
   audio.unlock();
   audio.toggleMute();
@@ -2230,6 +2423,7 @@ document.addEventListener(
 window.addEventListener("resize", resize);
 
 els.titleBest.textContent = String(toFeet(getBest()));
+syncGarage();
 resetRun("title");
 if (GHOST_PAGE) {
   document.title = "Ghost — Stoplight Simulator";
