@@ -1703,9 +1703,9 @@ function drawGhost() {
   const z = gy - state.carY;
   if (!Number.isFinite(z) || z < 5 || z > 220) return;
   const p = project(0, z);
-  const scale = Math.max(0.1, (p.halfPx * 0.4) / 42);
-  const alpha = clamp((220 - z) / 110, 0.05, 0.14);
-  drawCar({ ghost: true, x: p.x, y: p.y + 6, scale, alpha });
+  const scale = (p.halfPx * 0.22) / 42;
+  const alpha = clamp((200 - z) / 420, 0.18, 0.36);
+  drawCar({ ghost: true, x: p.x, y: p.y, scale, alpha });
 }
 
 function updateParticles(dt) {
