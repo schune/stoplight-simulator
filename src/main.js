@@ -826,15 +826,19 @@ function syncMuteUi() {
   els.mute.setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
 }
 
+const appEl = document.getElementById("app");
+
 function resize() {
-  const app = document.getElementById("app");
-  width = app.clientWidth;
-  height = app.clientHeight;
-  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = appEl.clientWidth;
+  const h = appEl.clientHeight;
+  const nextDpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (!w || !h) return;
+  if (w === width && h === height && nextDpr === dpr && canvas.width === Math.round(w * dpr)) return;
+  width = w;
+  height = h;
+  dpr = nextDpr;
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
-  canvas.style.width = `${width}px`;
-  canvas.style.height = `${height}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   horizon = height * 0.33;
 }
@@ -2057,6 +2061,7 @@ function resumeGame() {
 }
 
 function startGame() {
+  resize();
   audio.unlock();
   audio.startEngine();
   audio.ui();
@@ -2433,6 +2438,10 @@ document.addEventListener(
   { passive: false, capture: true }
 );
 window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", resize);
+window.addEventListener("pageshow", resize);
+window.visualViewport?.addEventListener("resize", resize);
+if ("ResizeObserver" in window) new ResizeObserver(resize).observe(appEl);
 
 els.titleBest.textContent = String(toFeet(getBest()));
 syncGarage();
