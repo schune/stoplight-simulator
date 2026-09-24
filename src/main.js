@@ -219,7 +219,10 @@ function toFeet(meters) {
 function projectedMeters(dist, remaining) {
   const left = Math.max(0, Number(remaining) || 0);
   const elapsed = RUN_SECONDS - left;
-  const pace = elapsed >= 0.75 ? dist / elapsed : Math.max(0, state.speed);
+  const skip = 0.5;
+  const startDist = Math.min(dist, Number(state.ghostTape[Math.round(skip * GHOST_HZ)]) || 0);
+  const pace =
+    elapsed >= skip + 0.25 ? Math.max(0, dist - startDist) / (elapsed - skip) : Math.max(0, state.speed);
   return Math.max(dist, Math.round(dist + pace * left));
 }
 
@@ -1004,7 +1007,7 @@ function endRun(reason) {
     els.resultTitle.textContent = "CAUGHT RED";
     els.resultTitle.className = "bad";
     els.resultLeft.textContent = `${left.toFixed(1)}s LEFT`;
-    els.resultPace.textContent = `COULD HAVE BEEN ${formatFt(projected)}`;
+    els.resultPace.textContent = `ON PACE FOR ${formatFt(projected)}`;
     els.resultFlavor.textContent = pick(flavorRed);
     show(els.resultTitle);
     show(els.resultMiss);
