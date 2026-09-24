@@ -219,7 +219,7 @@ function toFeet(meters) {
 function projectedMeters(dist, remaining) {
   const left = Math.max(0, Number(remaining) || 0);
   const elapsed = RUN_SECONDS - left;
-  const skip = 0.5;
+  const skip = 1;
   const startDist = Math.min(dist, Number(state.ghostTape[Math.round(skip * GHOST_HZ)]) || 0);
   const pace =
     elapsed >= skip + 0.25 ? Math.max(0, dist - startDist) / (elapsed - skip) : Math.max(0, state.speed);
