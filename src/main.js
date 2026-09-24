@@ -739,7 +739,7 @@ function rollOmen() {
 }
 
 function rollColorblind() {
-  if (Math.random() >= 0.05) {
+  if (Math.random() >= 1 / 30) {
     state.colorblindAt = 0;
     return;
   }
@@ -991,14 +991,17 @@ function endRun(reason) {
   els.resultNew.classList.remove("place");
 
   if (omen) {
+    const left = Math.max(0, state.remaining);
     els.resultKicker.textContent = omen.kicker;
     els.resultTitle.textContent = omen.title;
     els.resultTitle.className = "omen";
+    els.resultLeft.textContent = `${left.toFixed(1)}s LEFT`;
+    els.resultPace.textContent = `ON PACE FOR ${formatFt(projectedMeters(dist, left))}`;
     els.resultFlavor.textContent = pick(omen.flavor);
     show(els.resultTitle);
+    show(els.resultMiss);
     hide(els.resultHero);
     hide(els.resultHeroSub);
-    hide(els.resultMiss);
     hide(els.resultTops);
   } else if (red) {
     const left = Math.max(0, state.remaining);
