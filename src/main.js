@@ -102,8 +102,8 @@ const els = {
   garage: document.getElementById("garage"),
   cars: {
     taxi: document.getElementById("car-taxi"),
-    sedan: document.getElementById("car-sedan"),
     sport: document.getElementById("car-sport"),
+    moto: document.getElementById("car-moto"),
   },
 };
 
@@ -372,31 +372,39 @@ function getBest() {
   return Number(localStorage.getItem(BEST_KEY) || 0);
 }
 
+const CAR_IDS = ["taxi", "sport", "moto"];
+const PENDING_CAR_KEY = "stoplight-sim-pending-car";
+
 function savedCar() {
   const id = localStorage.getItem(CAR_KEY);
-  return id === "sedan" || id === "sport" ? id : "taxi";
+  return CAR_IDS.includes(id) ? id : "taxi";
 }
 
 function carUnlocked(id) {
-  if (id === "sedan") return Boolean(authState.user);
+  if (id === "moto") return Boolean(authState.user);
   if (id === "sport") return toFeet(getBest()) >= SPORT_FEET;
   return id === "taxi";
 }
 
 function activeCar() {
   const id = savedCar();
-  if (id === "sedan" && !authState.ready) return state.car === "sedan" ? "sedan" : "taxi";
+  if (id === "moto" && !authState.ready) return state.car === "moto" ? "moto" : "taxi";
   return carUnlocked(id) ? id : "taxi";
 }
 
 function syncGarage() {
+  const pending = sessionStorage.getItem(PENDING_CAR_KEY);
+  if (pending && carUnlocked(pending)) {
+    localStorage.setItem(CAR_KEY, pending);
+    sessionStorage.removeItem(PENDING_CAR_KEY);
+  }
   if (authState.ready && !carUnlocked(savedCar())) localStorage.setItem(CAR_KEY, "taxi");
   state.car = activeCar();
   audio.setCar(state.car);
-  for (const id of ["taxi", "sedan", "sport"]) {
+  for (const id of CAR_IDS) {
     const btn = els.cars[id];
     if (!btn) continue;
-    const open = id === "sedan" && !authState.ready ? false : carUnlocked(id);
+    const open = id === "moto" && !authState.ready ? false : carUnlocked(id);
     const on = state.car === id;
     btn.classList.toggle("is-on", on);
     btn.classList.toggle("is-locked", !open);
@@ -404,8 +412,8 @@ function syncGarage() {
     const label = btn.querySelector(".car-label");
     if (!label) continue;
     if (id === "taxi") label.textContent = "TAXI";
-    if (id === "sedan") label.textContent = open ? "CAR" : "SIGN IN";
-    if (id === "sport") label.textContent = open ? "SPORT" : "4,000";
+    if (id === "sport") label.textContent = open ? "SPORT" : "4,000 FT";
+    if (id === "moto") label.textContent = open ? "MOTO" : "SIGN IN";
   }
 }
 
@@ -1815,48 +1823,95 @@ function drawTaxiBody(ghost, braking, alpha) {
   drawPlate(ghost ? "BEST" : "NITE");
 }
 
-function drawSedanBody(braking, alpha) {
-  ctx.fillStyle = "#8e97a6";
+function drawMotoBody(braking, alpha) {
+  ctx.fillStyle = "#16181f";
+  roundRect(-4, -84, 8, 20, 4);
+  ctx.fill();
+  ctx.strokeStyle = "#8a92a0";
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(-40, 8);
-  ctx.quadraticCurveTo(-46, -8, -28, -74);
-  ctx.lineTo(28, -74);
-  ctx.quadraticCurveTo(46, -8, 40, 8);
+  ctx.moveTo(-5, -70);
+  ctx.lineTo(-7, -54);
+  ctx.moveTo(5, -70);
+  ctx.lineTo(7, -54);
+  ctx.stroke();
+
+  ctx.fillStyle = "#1f6fb8";
+  ctx.beginPath();
+  ctx.moveTo(-10, -12);
+  ctx.quadraticCurveTo(-14, -40, -8, -60);
+  ctx.lineTo(8, -60);
+  ctx.quadraticCurveTo(14, -40, 10, -12);
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = "#e6ebf2";
+  ctx.fillStyle = "#2f8fd8";
   ctx.beginPath();
-  ctx.moveTo(-34, 5);
-  ctx.quadraticCurveTo(-38, -6, -22, -72);
-  ctx.lineTo(22, -72);
-  ctx.quadraticCurveTo(38, -6, 34, 5);
+  ctx.moveTo(-7, -14);
+  ctx.quadraticCurveTo(-10, -38, -5, -58);
+  ctx.lineTo(5, -58);
+  ctx.quadraticCurveTo(10, -38, 7, -14);
   ctx.closePath();
   ctx.fill();
-
-  ctx.fillStyle = "#111820";
-  roundRect(-16, -66, 32, 28, 6);
-  ctx.fill();
-  ctx.fillStyle = "rgba(170, 210, 255, 0.2)";
-  roundRect(-13, -63, 26, 10, 4);
-  ctx.fill();
-
-  ctx.fillStyle = "#c5ccd6";
-  ctx.fillRect(-26, -30, 52, 3);
 
   ctx.fillStyle = "#b7c0cc";
-  roundRect(-36, -2, 14, 10, 2);
+  roundRect(10, -20, 7, 24, 3);
   ctx.fill();
-  roundRect(22, -2, 14, 10, 2);
+  ctx.fillStyle = "#6c7380";
+  ctx.beginPath();
+  ctx.ellipse(13.5, 3, 3.5, 2, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = braking ? COLORS.red : "#6e2834";
-  roundRect(-32, -16, 12, 14, 2);
+  ctx.fillStyle = "#0f1014";
+  roundRect(-8, -10, 16, 24, 7);
   ctx.fill();
-  roundRect(20, -16, 12, 14, 2);
+  ctx.fillStyle = "#23262e";
+  ctx.fillRect(-2, -8, 4, 20);
+
+  ctx.fillStyle = "#1b1d24";
+  ctx.beginPath();
+  ctx.moveTo(-9, -18);
+  ctx.quadraticCurveTo(-18, -34, -15, -50);
+  ctx.quadraticCurveTo(0, -56, 15, -50);
+  ctx.quadraticCurveTo(18, -34, 9, -18);
+  ctx.closePath();
   ctx.fill();
-  drawBrakeGlow(braking, alpha, -8);
-  drawPlate("CITY");
+
+  ctx.strokeStyle = "#1b1d24";
+  ctx.lineWidth = 5;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-13, -46);
+  ctx.lineTo(-19, -58);
+  ctx.moveTo(13, -46);
+  ctx.lineTo(19, -58);
+  ctx.stroke();
+  ctx.strokeStyle = "#2c3038";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(-22, -60);
+  ctx.lineTo(22, -60);
+  ctx.stroke();
+  ctx.lineCap = "butt";
+
+  ctx.fillStyle = "#f2f0ea";
+  ctx.beginPath();
+  ctx.arc(0, -58, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#2f8fd8";
+  ctx.fillRect(-2, -68, 4, 20);
+
+  ctx.fillStyle = braking ? COLORS.red : "#5a1820";
+  roundRect(-6, -16, 12, 5, 2);
+  ctx.fill();
+  if (braking) {
+    ctx.globalAlpha = 0.45 * alpha;
+    ctx.fillStyle = COLORS.red;
+    ctx.beginPath();
+    ctx.ellipse(0, -13, 14, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = alpha;
+  }
 }
 
 function drawSportBody(braking, alpha) {
@@ -1932,17 +1987,22 @@ function drawCar(opts = {}) {
   ctx.save();
   ctx.globalAlpha *= alpha;
 
+  const kind = ghost ? "ghost" : state.car;
+  const bike = kind === "moto";
+
   if (!pose.hideCone) {
     const cone = ctx.createLinearGradient(x, y - h, x, horizon + 8);
     cone.addColorStop(0, "rgba(255, 244, 210, 0.28)");
     cone.addColorStop(0.45, "rgba(255, 236, 190, 0.08)");
     cone.addColorStop(1, "rgba(255, 244, 210, 0)");
+    const spread = bike ? 0.15 : 0.24;
+    const mouth = bike ? 5 : 16;
     ctx.fillStyle = cone;
     ctx.beginPath();
-    ctx.moveTo(x - 16, y - h * 0.5 + bob);
-    ctx.lineTo(x - width * 0.24, horizon + 18);
-    ctx.lineTo(x + width * 0.24, horizon + 18);
-    ctx.lineTo(x + 16, y - h * 0.5 + bob);
+    ctx.moveTo(x - mouth, y - h * 0.5 + bob);
+    ctx.lineTo(x - width * spread, horizon + 18);
+    ctx.lineTo(x + width * spread, horizon + 18);
+    ctx.lineTo(x + mouth, y - h * 0.5 + bob);
     ctx.closePath();
     ctx.fill();
   }
@@ -1957,17 +2017,16 @@ function drawCar(opts = {}) {
 
   ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
   ctx.beginPath();
-  ctx.ellipse(0, 16, 54, 12, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 16, bike ? 24 : 54, bike ? 8 : 12, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = braking ? "rgba(255, 45, 74, 0.3)" : ghost ? "rgba(200, 210, 230, 0.12)" : "rgba(34, 227, 138, 0.14)";
   ctx.beginPath();
-  ctx.ellipse(0, 12, 52, 16, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 12, bike ? 26 : 52, bike ? 10 : 16, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  const kind = ghost ? "ghost" : state.car;
   if (kind === "sport") drawSportBody(braking, alpha);
-  else if (kind === "sedan") drawSedanBody(braking, alpha);
+  else if (bike) drawMotoBody(braking, alpha);
   else drawTaxiBody(ghost, braking, alpha);
 
   ctx.restore();
@@ -2432,7 +2491,9 @@ els.garage.addEventListener("click", (e) => {
   const id = btn.dataset.car;
   audio.unlock();
   if (!carUnlocked(id)) {
-    if (id === "sedan") {
+    if (id === "moto") {
+      if (!authState.ready || authState.pending) return;
+      sessionStorage.setItem(PENDING_CAR_KEY, "moto");
       toast("SIGN IN TO UNLOCK", "place");
       void signInWithGoogle();
     } else toast("HIT 4,000 FT", "place");
@@ -2564,6 +2625,10 @@ if (import.meta.env.DEV) {
   };
   window.__colorblind = () => {
     beginColorblind();
+  };
+  window.__car = (id) => {
+    state.car = CAR_IDS.includes(id) ? id : "taxi";
+    audio.setCar(state.car);
   };
   window.__endRun = (reason = "time", dist = 847, left) => {
     hide(els.title);
