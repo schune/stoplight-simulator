@@ -13,7 +13,6 @@ const BEST_KEY = "stoplight-sim-best-v2";
 const CAR_KEY = "stoplight-sim-car-v1";
 const SPORT_FEET = 4000;
 const TOP_KEY = "stoplight-sim-tops-v2";
-const GHOST_KEY = "stoplight-sim-ghost-v2";
 const BOARD_METRIC_KEY = "stoplight-sim-board-metric";
 const SHARE_URL = "https://stoplightsimulator.com/";
 const GHOST_HZ = 10;
@@ -187,7 +186,6 @@ const state = {
   belt: 0,
   ftMark: 0,
   ghostTape: [],
-  ghostBest: [],
   car: "taxi",
   sportAnnounced: false,
 };
@@ -432,55 +430,11 @@ function maybeUnlockSport() {
   syncGarage();
 }
 
-function loadGhost() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(GHOST_KEY) || "[]");
-    if (Array.isArray(raw) && raw.length) {
-      return raw.map(Number).filter((n) => Number.isFinite(n) && n >= 0);
-    }
-  } catch {
-    /* ignore */
-  }
-  return [];
-}
-
-function raceGhost() {
-  const saved = loadGhost();
-  if (saved.length >= 2) return saved;
-  const best = getBest();
-  const dist = best > 40 ? best : 400;
-  const steps = Math.round(RUN_SECONDS * GHOST_HZ);
-  const tape = [];
-  for (let i = 0; i <= steps; i++) tape.push((dist * i) / steps);
-  return tape;
-}
-
-function saveGhost(tape) {
-  if (!tape?.length) return;
-  localStorage.setItem(
-    GHOST_KEY,
-    JSON.stringify(tape.map((n) => Math.round(Number(n) * 10) / 10))
-  );
-}
-
 function stampGhost() {
   const elapsed = Math.max(0, RUN_SECONDS - state.remaining);
   const idx = Math.max(0, Math.floor(elapsed * GHOST_HZ));
   while (state.ghostTape.length <= idx) state.ghostTape.push(state.carY);
   state.ghostTape[idx] = state.carY;
-}
-
-function ghostWorldY() {
-  const tape = state.ghostBest;
-  if (tape.length >= 2) {
-    const elapsed = Math.max(0, RUN_SECONDS - state.remaining);
-    const i = elapsed * GHOST_HZ;
-    const a = Math.min(tape.length - 1, Math.floor(i));
-    const b = Math.min(tape.length - 1, a + 1);
-    const t = Math.min(1, i - a);
-    return tape[a] * (1 - t) + tape[b] * t;
-  }
-  return null;
 }
 
 function boardName(name) {
@@ -1116,7 +1070,6 @@ function endRun(reason) {
   countUp(els.statLights, state.cleared, "", 480);
   els.statBest.textContent = formatFt(best);
   els.titleBest.textContent = String(toFeet(best));
-  if (rec.isNewBest && state.ghostTape.length > 3) saveGhost(state.ghostTape);
   if (timed && !rec.isNewBest && rec.rank === 0) flashScreen("good", 420);
   syncAuthUi();
   void postRun();
@@ -2032,28 +1985,6 @@ function drawCar(opts = {}) {
   ctx.restore();
 }
 
-function drawGhost() {
-  if (state.mode !== "play" && state.mode !== "countdown" && state.mode !== "pause") return;
-  const gy = ghostWorldY();
-  if (gy == null) return;
-  const z = gy - state.carY;
-  if (!Number.isFinite(z) || z < 6 || z > 200) return;
-  const p = project(0, z);
-  const thick = Math.max(1, (1 - p.t) * 1.6);
-  const span = p.halfPx * 0.42;
-  const size = Math.max(7, Math.round(lerp(11, 7, p.t)));
-  ctx.save();
-  ctx.fillStyle = "#c5ccd8";
-  ctx.globalAlpha = 0.1;
-  ctx.fillRect(p.x - span, p.y, span * 2, thick);
-  ctx.globalAlpha = 0.16;
-  ctx.font = `600 ${size}px "IBM Plex Mono", monospace`;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText("BEST", p.x + p.halfPx + lerp(10, 4, p.t), p.y);
-  ctx.restore();
-}
-
 function updateParticles(dt) {
   for (let i = state.particles.length - 1; i >= 0; i--) {
     const p = state.particles[i];
@@ -2108,7 +2039,6 @@ function render() {
   drawSinkhole();
   drawBuildings();
   drawStreetLamps();
-  drawGhost();
   const lights = state.lights
     .map((light) => ({ light, z: light.y - state.carY }))
     .filter((x) => x.z > 0.5 && x.z < 230)
@@ -2206,7 +2136,6 @@ function startGame() {
   resetRun("countdown");
   rollOmen();
   rollColorblind();
-  state.ghostBest = raceGhost();
   state.countdown = 3;
   state.holding = false;
   state.countShown = "";
@@ -2534,6 +2463,13 @@ for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
   document.addEventListener(type, (e) => e.preventDefault(), { passive: false, capture: true });
 }
 document.addEventListener("dblclick", (e) => e.preventDefault(), { capture: true });
+for (const type of ["selectstart", "contextmenu"]) {
+  document.addEventListener(type, (e) => e.preventDefault(), { capture: true });
+}
+document.addEventListener("selectionchange", () => {
+  const sel = document.getSelection();
+  if (sel && !sel.isCollapsed) sel.removeAllRanges();
+});
 document.addEventListener(
   "click",
   (e) => {
