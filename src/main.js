@@ -1360,29 +1360,36 @@ function drawRoad() {
   ctx.fillRect(0, horizon, width, 90);
 }
 
+function drawRoadMark(worldY, text, color, strength) {
+  const z = worldY - state.carY;
+  if (z < 3 || z >= 190) return;
+  const p = project(0, z);
+  const size = Math.round(lerp(34, 7, p.t));
+  if (size < 7) return;
+  ctx.save();
+  ctx.globalAlpha = clamp((190 - z) / 60, 0, 1) * strength;
+  ctx.fillStyle = color;
+  ctx.fillRect(p.x - p.halfPx * 0.92, p.y, p.halfPx * 1.84, Math.max(1, lerp(4, 1, p.t)));
+  ctx.font = `${size}px Anton, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.translate(p.x, p.y + Math.max(2, lerp(8, 2, p.t)));
+  ctx.scale(1, 0.55);
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
 function drawFootMarkers() {
   const step = 1000 / FT_PER_M;
+  const best = getBest();
+  const bestFeet = toFeet(best);
+  const showBest = bestFeet > 0 && state.mode !== "title";
   const first = Math.max(1, Math.ceil((state.carY + 3) / step));
   for (let k = first; k * step - state.carY < 190; k++) {
-    const z = k * step - state.carY;
-    const p = project(0, z);
-    const alpha = clamp((190 - z) / 60, 0, 1) * 0.55;
-    const size = Math.round(lerp(34, 7, p.t));
-    if (size < 7) continue;
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = "#f4efe4";
-    ctx.fillRect(p.x - p.halfPx * 0.92, p.y, p.halfPx * 1.84, Math.max(1, lerp(4, 1, p.t)));
-    ctx.font = `${size}px Anton, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.save();
-    ctx.translate(p.x, p.y + Math.max(2, lerp(8, 2, p.t)));
-    ctx.scale(1, 0.55);
-    ctx.fillText(`${(k * 1000).toLocaleString("en-US")} FT`, 0, 0);
-    ctx.restore();
-    ctx.restore();
+    if (showBest && Math.abs(k * 1000 - bestFeet) < 60) continue;
+    drawRoadMark(k * step, `${(k * 1000).toLocaleString("en-US")} FT`, "#f4efe4", 0.55);
   }
+  if (showBest) drawRoadMark(best, `BEST ${bestFeet.toLocaleString("en-US")} FT`, "#ffc01a", 0.8);
 }
 
 function drawBuildings() {
