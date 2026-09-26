@@ -277,9 +277,9 @@ body {
 
 .time-fuse {
   grid-column: 1 / -1;
-  height: 5px;
+  height: 10px;
   border-radius: 99px;
-  background: rgba(244, 239, 228, 0.1);
+  background: rgba(244, 239, 228, 0.14);
   border: 1px solid var(--line);
   overflow: hidden;
 }
@@ -357,6 +357,116 @@ body {
 
 .hud-odometer {
   border-color: rgba(255, 192, 26, 0.28);
+}
+
+#hud > .hud-clock,
+#hud > .hud-odometer {
+  align-self: start;
+}
+
+.hud-speed.gauge {
+  position: relative;
+  justify-self: end;
+  width: 100%;
+  max-width: 112px;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  backdrop-filter: none;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.55));
+}
+
+#gauge {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.gauge-bezel {
+  fill: #0d0e12;
+  stroke: #2e313b;
+  stroke-width: 1.4;
+}
+
+.gauge-face {
+  fill: #f2f0ea;
+  stroke: #1a1b20;
+  stroke-width: 1.2;
+}
+
+.gauge-tick {
+  stroke: #15161b;
+  stroke-linecap: butt;
+}
+
+.gauge-tick.major {
+  stroke-width: 1.9;
+}
+
+.gauge-tick.minor {
+  stroke-width: 0.8;
+}
+
+.gauge-num {
+  font-family: Anton, sans-serif;
+  font-size: 10.5px;
+  fill: #15161b;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.gauge-unit {
+  font-family: Anton, sans-serif;
+  font-size: 7.5px;
+  letter-spacing: 0.08em;
+  fill: #15161b;
+  text-anchor: middle;
+}
+
+#gauge-needle {
+  transform-origin: 50px 50px;
+  transform: rotate(-135deg);
+}
+
+.gauge-needle {
+  fill: #ff3b22;
+  stroke: #b3180a;
+  stroke-width: 0.4;
+}
+
+.gauge-tail {
+  stroke: #ff3b22;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.gauge-hub {
+  fill: #ff3b22;
+  stroke: #b3180a;
+  stroke-width: 0.6;
+}
+
+.gauge-cap {
+  fill: #7a1206;
+}
+
+.hud-speed.gauge #hud-speed {
+  position: absolute;
+  left: 50%;
+  bottom: 13%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 1px 5px 0;
+  min-width: 30%;
+  border-radius: 3px;
+  background: #1a0d0b;
+  color: #ff5a3c;
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: center;
+  text-shadow: 0 0 6px rgba(255, 90, 60, 0.6);
 }
 
 .hud-label {

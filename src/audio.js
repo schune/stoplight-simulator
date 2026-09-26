@@ -9,6 +9,72 @@ export function createAudio() {
   let noiseGain = null;
   let muted = localStorage.getItem(MUTE_KEY) === "1";
   const listeners = new Set();
+  let noiseFilter = null;
+
+  const PROFILES = {
+    taxi: {
+      wave: "sawtooth",
+      sub: "square",
+      base: 46,
+      perSpeed: 6.4,
+      filter: 200,
+      filterPerSpeed: 22,
+      q: 0.8,
+      vol: 0.018,
+      volPerSpeed: 0.0038,
+      noise: 170,
+      noiseVol: 0.0016,
+      gear: 0,
+      rev: [90, 240],
+    },
+    sedan: {
+      wave: "triangle",
+      sub: "sine",
+      base: 38,
+      perSpeed: 4.4,
+      filter: 160,
+      filterPerSpeed: 12,
+      q: 0.4,
+      vol: 0.02,
+      volPerSpeed: 0.003,
+      noise: 120,
+      noiseVol: 0.0009,
+      gear: 0,
+      rev: [70, 160],
+    },
+    sport: {
+      wave: "sawtooth",
+      sub: "sawtooth",
+      base: 64,
+      perSpeed: 13,
+      filter: 360,
+      filterPerSpeed: 36,
+      q: 2.6,
+      vol: 0.02,
+      volPerSpeed: 0.0044,
+      noise: 420,
+      noiseVol: 0.0022,
+      gear: 8.5,
+      rev: [120, 520],
+    },
+  };
+  let profile = PROFILES.taxi;
+
+  function applyProfile() {
+    if (!engine) return;
+    engine.type = profile.wave;
+    rumble.type = profile.sub;
+    filter.Q.value = profile.q;
+    noiseFilter.frequency.value = profile.noise;
+  }
+
+  function engineFreq(speed, holding) {
+    const lift = holding ? 4 : 0;
+    if (!profile.gear) return profile.base + speed * profile.perSpeed + lift;
+    const gear = Math.floor(speed / profile.gear);
+    const inGear = speed - gear * profile.gear;
+    return profile.base + gear * 14 + inGear * profile.perSpeed + lift;
+  }
 
   function emit() {
     for (const fn of listeners) fn(muted);
@@ -136,7 +202,7 @@ export function createAudio() {
       filter.connect(engineGain);
       engineGain.connect(master);
       const noise = makeNoiseLoop();
-      const noiseFilter = ac.createBiquadFilter();
+      noiseFilter = ac.createBiquadFilter();
       noiseFilter.type = "bandpass";
       noiseFilter.frequency.value = 170;
       noiseFilter.Q.value = 1.1;
@@ -145,9 +211,37 @@ export function createAudio() {
       noise.connect(noiseFilter);
       noiseFilter.connect(noiseGain);
       noiseGain.connect(master);
+      applyProfile();
       engine.start();
       rumble.start();
       noise.start();
+    },
+    setCar(id) {
+      profile = PROFILES[id] || PROFILES.taxi;
+      applyProfile();
+    },
+    rev() {
+      const ac = ensure();
+      const [lo, hi] = profile.rev;
+      const t = ac.currentTime;
+      const out = envGain(0.07, 0.03, 0.5);
+      const f = ac.createBiquadFilter();
+      f.type = "lowpass";
+      f.Q.value = profile.q;
+      f.frequency.setValueAtTime(profile.filter, t);
+      f.frequency.linearRampToValueAtTime(profile.filter * 3, t + 0.2);
+      f.frequency.exponentialRampToValueAtTime(profile.filter, t + 0.5);
+      f.connect(out);
+      for (const [type, mult] of [[profile.wave, 1], [profile.sub, 0.5]]) {
+        const osc = ac.createOscillator();
+        osc.type = type;
+        osc.frequency.setValueAtTime(lo * mult, t);
+        osc.frequency.exponentialRampToValueAtTime(hi * mult, t + 0.2);
+        osc.frequency.exponentialRampToValueAtTime(lo * mult, t + 0.5);
+        osc.connect(f);
+        osc.start(t);
+        osc.stop(t + 0.52);
+      }
     },
     setEngine(speed, holding, live) {
       if (!engine || !ctx) return;
@@ -157,13 +251,15 @@ export function createAudio() {
         if (noiseGain) noiseGain.gain.setTargetAtTime(0.0001, t, 0.12);
         return;
       }
-      const freq = 46 + speed * 6.4 + (holding ? 4 : 0);
-      engine.frequency.setTargetAtTime(freq, t, 0.05);
-      rumble.frequency.setTargetAtTime(freq * 0.5, t, 0.05);
-      if (filter) filter.frequency.setTargetAtTime(200 + speed * 22 + (holding ? 90 : 0), t, 0.08);
-      const vol = speed < 0.35 ? 0.0001 : 0.018 + speed * 0.0038;
+      const freq = engineFreq(speed, holding);
+      engine.frequency.setTargetAtTime(freq, t, profile.gear ? 0.03 : 0.05);
+      rumble.frequency.setTargetAtTime(freq * 0.5, t, profile.gear ? 0.03 : 0.05);
+      if (filter) {
+        filter.frequency.setTargetAtTime(profile.filter + speed * profile.filterPerSpeed + (holding ? 90 : 0), t, 0.08);
+      }
+      const vol = speed < 0.35 ? 0.0001 : profile.vol + speed * profile.volPerSpeed;
       engineGain.gain.setTargetAtTime(vol, t, 0.07);
-      if (noiseGain) noiseGain.gain.setTargetAtTime(speed < 0.35 ? 0.0001 : 0.01 + speed * 0.0016, t, 0.08);
+      if (noiseGain) noiseGain.gain.setTargetAtTime(speed < 0.35 ? 0.0001 : 0.01 + speed * profile.noiseVol, t, 0.08);
     },
     ui() {
       beep(620, 0.05, "triangle", 0.04);

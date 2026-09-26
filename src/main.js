@@ -241,6 +241,53 @@ function toMph(mps) {
   return Math.round((Number(mps) || 0) * MPH_PER_MS);
 }
 
+const GAUGE_MAX = 80;
+const GAUGE_SWEEP = 270;
+const gaugeNeedle = document.getElementById("gauge-needle");
+let gaugeAngle = -GAUGE_SWEEP / 2;
+
+function gaugeAngleFor(mph) {
+  return -GAUGE_SWEEP / 2 + (clamp(mph, 0, GAUGE_MAX) / GAUGE_MAX) * GAUGE_SWEEP;
+}
+
+function buildGauge() {
+  const ticks = document.getElementById("gauge-ticks");
+  if (!ticks) return;
+  const ns = "http://www.w3.org/2000/svg";
+  for (let mph = 0; mph <= GAUGE_MAX; mph += 2) {
+    const major = mph % 10 === 0;
+    const mid = !major && mph % 5 === 0;
+    if (!major && !mid && mph % 2 !== 0) continue;
+    const a = ((gaugeAngleFor(mph) - 90) * Math.PI) / 180;
+    const outer = 42.5;
+    const inner = major ? 35.5 : mid ? 38 : 39.6;
+    const line = document.createElementNS(ns, "line");
+    line.setAttribute("x1", String(50 + Math.cos(a) * inner));
+    line.setAttribute("y1", String(50 + Math.sin(a) * inner));
+    line.setAttribute("x2", String(50 + Math.cos(a) * outer));
+    line.setAttribute("y2", String(50 + Math.sin(a) * outer));
+    line.setAttribute("class", `gauge-tick ${major ? "major" : "minor"}`);
+    ticks.appendChild(line);
+    if (major && mph % 20 === 0) {
+      const label = document.createElementNS(ns, "text");
+      label.setAttribute("x", String(50 + Math.cos(a) * 28.5));
+      label.setAttribute("y", String(50 + Math.sin(a) * 28.5));
+      label.setAttribute("class", "gauge-num");
+      label.textContent = String(mph);
+      ticks.appendChild(label);
+    }
+  }
+}
+
+function updateGauge(dt) {
+  if (!gaugeNeedle) return;
+  const mph = (Number(state.speed) || 0) * MPH_PER_MS;
+  const shake = state.holding && mph > 4 && !REDUCE ? Math.sin(state.time * 38) * 0.6 : 0;
+  const target = gaugeAngleFor(mph) + shake;
+  gaugeAngle += (target - gaugeAngle) * Math.min(1, dt * 14);
+  gaugeNeedle.style.transform = `rotate(${gaugeAngle.toFixed(2)}deg)`;
+}
+
 function mix3(a, b, t) {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
@@ -255,7 +302,6 @@ function rgb(c, a) {
 const BELTS = [
   {
     y: 0,
-    name: "",
     sky: [[5, 6, 15], [12, 16, 36], [26, 21, 40], [58, 36, 24]],
     haze: [255, 132, 62],
     lamp: [255, 226, 168],
@@ -263,7 +309,6 @@ const BELTS = [
   },
   {
     y: 400,
-    name: "NEON ROW",
     sky: [[12, 5, 18], [32, 10, 38], [52, 16, 40], [74, 28, 38]],
     haze: [255, 72, 124],
     lamp: [255, 168, 214],
@@ -271,7 +316,6 @@ const BELTS = [
   },
   {
     y: 820,
-    name: "RIVER PARK",
     sky: [[6, 12, 22], [10, 24, 44], [16, 40, 56], [28, 52, 58]],
     haze: [72, 168, 210],
     lamp: [176, 220, 255],
@@ -279,7 +323,6 @@ const BELTS = [
   },
   {
     y: 1280,
-    name: "THE SPUR",
     sky: [[8, 8, 14], [20, 16, 20], [42, 32, 22], [78, 54, 28]],
     haze: [214, 164, 72],
     lamp: [255, 214, 150],
@@ -349,6 +392,7 @@ function activeCar() {
 function syncGarage() {
   if (authState.ready && !carUnlocked(savedCar())) localStorage.setItem(CAR_KEY, "taxi");
   state.car = activeCar();
+  audio.setCar(state.car);
   for (const id of ["taxi", "sedan", "sport"]) {
     const btn = els.cars[id];
     if (!btn) continue;
@@ -1178,12 +1222,12 @@ function updatePlay(dt) {
     }
   }
 
-  const belt = beltAt(state.carY);
-  if (belt.i > state.belt && belt.cur.name) {
-    toast(belt.cur.name, "place");
+  const thousands = Math.floor(toFeet(state.carY) / 1000);
+  if (thousands > state.belt) {
+    toast(`${(thousands * 1000).toLocaleString("en-US")} FT`, "place");
     rumble([10, 24, 10]);
   }
-  state.belt = belt.i;
+  state.belt = thousands;
 
   if (state.remaining <= 0) {
     state.remaining = 0;
@@ -1314,6 +1358,31 @@ function drawRoad() {
   fade.addColorStop(1, rgb(look.sky[3], 0));
   ctx.fillStyle = fade;
   ctx.fillRect(0, horizon, width, 90);
+}
+
+function drawFootMarkers() {
+  const step = 1000 / FT_PER_M;
+  const first = Math.max(1, Math.ceil((state.carY + 3) / step));
+  for (let k = first; k * step - state.carY < 190; k++) {
+    const z = k * step - state.carY;
+    const p = project(0, z);
+    const alpha = clamp((190 - z) / 60, 0, 1) * 0.55;
+    const size = Math.round(lerp(34, 7, p.t));
+    if (size < 7) continue;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#f4efe4";
+    ctx.fillRect(p.x - p.halfPx * 0.92, p.y, p.halfPx * 1.84, Math.max(1, lerp(4, 1, p.t)));
+    ctx.font = `${size}px Anton, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.save();
+    ctx.translate(p.x, p.y + Math.max(2, lerp(8, 2, p.t)));
+    ctx.scale(1, 0.55);
+    ctx.fillText(`${(k * 1000).toLocaleString("en-US")} FT`, 0, 0);
+    ctx.restore();
+    ctx.restore();
+  }
 }
 
 function drawBuildings() {
@@ -1969,6 +2038,7 @@ function render() {
   drawSky();
   drawCity();
   drawRoad();
+  drawFootMarkers();
   drawSinkhole();
   drawBuildings();
   drawStreetLamps();
@@ -2033,6 +2103,7 @@ function tick(now) {
   updateParticles(dt);
   render();
   updateHud();
+  updateGauge(dt);
   state.wasHolding = state.holding;
   requestAnimationFrame(tick);
 }
@@ -2361,7 +2432,7 @@ els.garage.addEventListener("click", (e) => {
     return;
   }
   chooseCar(id);
-  audio.ui();
+  audio.rev();
 });
 els.mute.addEventListener("click", () => {
   audio.unlock();
@@ -2444,6 +2515,7 @@ window.visualViewport?.addEventListener("resize", resize);
 if ("ResizeObserver" in window) new ResizeObserver(resize).observe(appEl);
 
 els.titleBest.textContent = String(toFeet(getBest()));
+buildGauge();
 syncGarage();
 resetRun("title");
 if (GHOST_PAGE) {

@@ -146,8 +146,19 @@
           <span class="hud-label">FT</span>
           <span id="hud-dist">0</span>
         </div>
-        <div class="hud-speed">
-          <span class="hud-label">MPH</span>
+        <div class="hud-speed gauge">
+          <svg id="gauge" viewBox="0 0 100 100" aria-hidden="true">
+            <circle cx="50" cy="50" r="49" class="gauge-bezel" />
+            <circle cx="50" cy="50" r="44.5" class="gauge-face" />
+            <g id="gauge-ticks"></g>
+            <text x="50" y="68" class="gauge-unit">MPH</text>
+            <g id="gauge-needle">
+              <path d="M50 54 L48.2 50 L50 11 L51.8 50 Z" class="gauge-needle" />
+              <path d="M50 50 L50 60" class="gauge-tail" />
+            </g>
+            <circle cx="50" cy="50" r="5" class="gauge-hub" />
+            <circle cx="50" cy="50" r="1.6" class="gauge-cap" />
+          </svg>
           <span id="hud-speed">0</span>
         </div>
       </header>
