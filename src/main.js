@@ -1297,7 +1297,7 @@ function endRun(reason) {
 function runSummary() {
   const parts = [`${state.cleared} LIGHT${state.cleared === 1 ? "" : "S"}`];
   if (state.waveBest >= 2) parts.push(`WAVE ×${state.waveBest}`);
-  if (state.gold) parts.push(`+${(state.gold * GOLD_FEET).toLocaleString("en-US")} GOLD`);
+  if (state.gold) parts.push(`+${(state.gold * GOLD_FEET).toLocaleString("en-US")} FT`);
   return parts.join(" · ");
 }
 
