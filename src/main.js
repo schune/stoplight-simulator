@@ -19,6 +19,13 @@ const BOARD_METRIC_KEY = "stoplight-sim-board-tab-v2";
 const MEDAL_SEEN_KEY = "stoplight-sim-medal-seen";
 const BOARD_METRICS = ["week", "best", "total"];
 const SHARE_URL = "https://stoplightsimulator.com/";
+const GOLD_ODDS = 0.12;
+const WAVE_TIERS = [
+  { min: 10, color: "#ff5ad5", name: "rainbow" },
+  { min: 7, color: "#ff5ad5", name: "hot" },
+  { min: 4, color: "#ffc01a", name: "warm" },
+  { min: 0, color: "#22e38a", name: "cool" },
+];
 const GHOST_HZ = 10;
 const RUN_SECONDS = 60;
 const MAX_SPEED = 34;
@@ -62,6 +69,8 @@ const els = {
   timeFuse: document.getElementById("time-fuse-bar"),
   timeFill: document.getElementById("time-fill"),
   countdown: document.getElementById("countdown"),
+  wave: document.getElementById("wave"),
+  waveN: document.getElementById("wave-n"),
   toast: document.getElementById("toast"),
   flash: document.getElementById("flash"),
   titleBest: document.getElementById("title-best"),
@@ -647,6 +656,9 @@ function generateWorld() {
     });
     y += Math.max(22, spacing);
   }
+  lights.forEach((light, i) => {
+    light.lucky = i > 1 && Math.random() < GOLD_ODDS;
+  });
 
   const buildings = [];
   for (let i = 0; i < 120; i++) {
@@ -706,6 +718,17 @@ function resetRun(mode) {
   state.ftMark = 0;
   state.ghostTape = [];
   state.sportAnnounced = false;
+  state.wave = 0;
+  state.waveBest = 0;
+  state.gold = 0;
+  state.stopArmed = false;
+  state.runBest = getBest();
+  state.bestCrossed = false;
+  state.weekLead = 0;
+  state.leadCrossed = false;
+  state.lastTick = 0;
+  state.redBy = -1;
+  syncWave();
 }
 
 const hideTimers = new WeakMap();
@@ -751,7 +774,7 @@ function rumble(pattern) {
 }
 
 function flashScreen(kind = "bad", ms = 280) {
-  els.flash.className = kind === "go" ? "go on" : kind === "good" ? "good on" : kind === "omen" ? "omen on" : kind === "best" ? "best on" : "on";
+  els.flash.className = ["go", "good", "omen", "best", "tint"].includes(kind) ? `${kind} on` : "on";
   setTimeout(() => {
     els.flash.className = "";
   }, ms);
@@ -803,6 +826,7 @@ function beginDisaster(type) {
   state.disasterT = 0;
   state.holding = false;
   state.omen = null;
+  syncWave();
   const play = audio[kind];
   if (typeof play === "function") play.call(audio);
   if (kind === "meteor") rumble([20, 40, 30, 80, 120]);
@@ -836,8 +860,159 @@ function burst(kind, n = 10) {
   }
 }
 
+function waveTier(n = state.wave) {
+  return WAVE_TIERS.find((tier) => n >= tier.min);
+}
+
+function syncWave(pop = false) {
+  const live = state.wave >= 2 && (state.mode === "play" || state.mode === "countdown");
+  els.wave.classList.toggle("hidden", !live);
+  if (!live) return;
+  const tier = waveTier();
+  els.wave.dataset.tier = tier.name;
+  els.wave.style.setProperty("--wave", tier.color);
+  els.waveN.textContent = `×${state.wave}`;
+  if (pop) {
+    els.wave.classList.remove("pop");
+    void els.wave.offsetWidth;
+    els.wave.classList.add("pop");
+  }
+}
+
+function flashTint(color, ms = 260) {
+  els.flash.style.setProperty("--tint", hexA(color, 0.34));
+  flashScreen("tint", ms);
+}
+
+function shower(colors, n, { y = horizon - 20, spread = width * 0.5, g = 320 } = {}) {
+  if (REDUCE) return;
+  for (let i = 0; i < n; i++) {
+    spark(width / 2 + rand(-spread, spread), y + rand(-30, 10), {
+      vx: rand(-60, 60),
+      vy: rand(-220, -40),
+      life: rand(0.7, 1.4),
+      size: rand(2, 4.5),
+      color: pick(colors),
+      g,
+    });
+  }
+}
+
+function carSparks(colors, n, power = 1) {
+  if (REDUCE) return;
+  const y = carScreenY() - 20;
+  for (let i = 0; i < n; i++) {
+    const a = rand(-Math.PI * 0.95, -Math.PI * 0.05);
+    const spd = rand(90, 240) * power;
+    spark(width / 2 + rand(-18, 18), y, {
+      vx: Math.cos(a) * spd,
+      vy: Math.sin(a) * spd,
+      life: rand(0.35, 0.75),
+      size: rand(1.6, 3.6),
+      color: pick(colors),
+      g: 260,
+    });
+  }
+}
+
+function passLight(light) {
+  state.wave += 1;
+  state.waveBest = Math.max(state.waveBest, state.wave);
+  const tier = waveTier();
+  audio.pass(state.wave);
+  rumble(state.wave >= 4 ? [8, 20, 10] : 8);
+  if (state.wave >= 2) carSparks([tier.color, "#f4efe4"], Math.min(28, 6 + state.wave * 2), 0.7 + Math.min(state.wave, 10) * 0.05);
+  if (state.wave >= 3) flashTint(tier.color, 200);
+  if (state.wave % 5 === 0) {
+    audio.waveUp(state.wave);
+    toast(`GREEN WAVE ×${state.wave}`);
+    flashTint(tier.color, 420);
+    shower([tier.color, "#f4efe4", "#ffc01a"], 34);
+    rumble([14, 30, 14, 30, 40]);
+  }
+  if (light.lucky) {
+    state.gold += 1;
+    audio.jackpot();
+    if (state.wave % 5 !== 0) toast("GOLD LIGHT");
+    flashScreen("best", 360);
+    shower(["#ffc01a", "#fff1b8", "#ffdc5e", "#f4efe4"], 46, { g: 380 });
+    rumble([12, 20, 12, 20, 12, 60]);
+  }
+  syncWave(true);
+}
+
+function breakWave() {
+  const big = state.wave >= 3;
+  state.wave = 0;
+  if (!big) {
+    syncWave();
+    return;
+  }
+  audio.waveLost();
+  els.wave.classList.add("lost");
+  setTimeout(() => {
+    els.wave.classList.remove("lost");
+    if (!state.wave) syncWave();
+  }, 380);
+}
+
+function closeCall(left) {
+  const razor = left < 0.25;
+  toast(razor ? "RAZOR CLOSE" : "CLOSE CALL", razor ? "" : "place");
+  audio.close(razor);
+  flashTint(COLORS.yellow, razor ? 320 : 220);
+  carSparks(["#ffc01a", "#fff1b8"], razor ? 26 : 14, razor ? 1.2 : 0.9);
+  rumble(razor ? [16, 20, 16, 20, 30] : [12, 20, 12]);
+}
+
+function perfectStop() {
+  toast("PERFECT STOP", "place");
+  audio.perfect();
+  flashTint(COLORS.green, 260);
+  carSparks(["#22e38a", "#f4efe4"], 16, 0.6);
+  rumble([10, 30, 10]);
+}
+
+function trackStop(front) {
+  if (state.speed > 4) state.stopArmed = true;
+  if (state.speed >= 1.2) return;
+  if (state.wave) breakWave();
+  if (!state.stopArmed) return;
+  state.stopArmed = false;
+  const light = nextLight();
+  if (!light) return;
+  const color = colorOf(light, state.time);
+  const gap = light.y - STOP_LINE - front;
+  if (color !== "green" && gap >= 0 && gap < 1.6) perfectStop();
+}
+
+function trackGoals() {
+  if (!state.bestCrossed && state.runBest > 30 && state.carY > state.runBest) {
+    state.bestCrossed = true;
+    toast("NEW BEST");
+    audio.best();
+    flashScreen("best", 480);
+    shower(["#ffc01a", "#f4efe4", "#22e38a", "#ff5ad5"], 56);
+    rumble([20, 40, 30, 70]);
+  }
+  if (!state.leadCrossed && state.weekLead > 30 && state.carY > state.weekLead) {
+    state.leadCrossed = true;
+    toast(authState.user ? "WEEKLY LEAD" : "BEAT #1 THIS WEEK");
+    audio.lead();
+    flashTint("#ff5ad5", 480);
+    shower(["#ff5ad5", "#ffc01a", "#f4efe4"], 56);
+    rumble([20, 40, 30, 70]);
+  }
+  const sec = Math.ceil(state.remaining);
+  if (sec <= 5 && sec >= 1 && sec !== state.lastTick) {
+    state.lastTick = sec;
+    audio.tick(5 - sec);
+    rumble(6);
+  }
+}
+
 let statTok = new WeakMap();
-function countUp(el, to, suffix = "", dur = 620, onDone) {
+function countUp(el, to, suffix = "", dur = 620, onDone, onStep) {
   const target = Math.round(to);
   if (REDUCE) {
     el.textContent = `${target}${suffix}`;
@@ -852,6 +1027,7 @@ function countUp(el, to, suffix = "", dur = 620, onDone) {
     const t = Math.min(1, (now - start) / dur);
     const eased = 1 - (1 - t) ** 3;
     el.textContent = `${Math.round(target * eased)}${suffix}`;
+    if (onStep && t < 1) onStep(eased);
     if (t < 1) requestAnimationFrame(tickStat);
     else if (onDone) onDone();
   };
@@ -957,6 +1133,8 @@ function crash(light) {
   hide(els.btnPause);
   state.mode = "crash";
   state.crashLight = light;
+  state.redBy = phaseOf(light, state.time) - light.green - light.yellow;
+  syncWave();
   state.crashT = 0;
   state.speed = 0;
   state.shake = REDUCE ? 0 : 12;
@@ -1050,7 +1228,8 @@ function endRun(reason) {
   } else if (red) {
     const left = Math.max(0, state.remaining);
     const projected = projectedMeters(dist, left);
-    els.resultKicker.textContent = "YOU RAN IT";
+    els.resultKicker.textContent =
+      state.redBy >= 0 && state.redBy < 1 ? `RED BY ${Math.max(0.01, state.redBy).toFixed(2)}s` : "YOU RAN IT";
     els.resultTitle.textContent = "CAUGHT RED";
     els.resultTitle.className = "bad";
     els.resultLeft.textContent = `${left.toFixed(1)}s LEFT`;
@@ -1072,10 +1251,24 @@ function endRun(reason) {
     show(els.resultHeroSub);
     show(els.resultTops);
     els.resultHero.classList.toggle("is-best", rec.isNewBest);
-    els.resultHeroSub.textContent = `${state.cleared} LIGHT${state.cleared === 1 ? "" : "S"}`;
-    countUp(els.resultDist, toFeet(dist), "", 1080, () => {
-      els.resultHero.classList.add("punch");
-    });
+    els.resultHeroSub.textContent = runSummary();
+    let lastTally = 0;
+    countUp(
+      els.resultDist,
+      toFeet(dist),
+      "",
+      1080,
+      () => {
+        els.resultHero.classList.add("punch");
+        audio.ding();
+      },
+      (t) => {
+        const now = performance.now();
+        if (now - lastTally < 45) return;
+        lastTally = now;
+        audio.tally(t);
+      }
+    );
     renderTops(rec.tops, rec.rank);
     celebrateTop(rec.rank);
   }
@@ -1105,8 +1298,51 @@ function endRun(reason) {
   els.statBest.textContent = formatFt(best);
   els.titleBest.textContent = String(toFeet(best));
   if (timed && !rec.isNewBest && rec.rank === 0) flashScreen("good", 420);
+  els.resultKicker.classList.toggle("near", red && state.redBy >= 0 && state.redBy < 1);
+  els.resultFlavor.classList.remove("chase");
+  state.lastRun.flavor = els.resultFlavor.textContent;
+  applyChase(state.lastRun);
+  syncWave();
   syncAuthUi();
   void postRun();
+}
+
+function runSummary() {
+  const parts = [`${state.cleared} LIGHT${state.cleared === 1 ? "" : "S"}`];
+  if (state.waveBest >= 2) parts.push(`WAVE ×${state.waveBest}`);
+  if (state.gold) parts.push(`${state.gold} GOLD`);
+  return parts.join(" · ");
+}
+
+function chaseFor(run) {
+  const dist = run.distance;
+  const uid = authState.user?.uid;
+  const options = [];
+  if (uid && run.week === week.id) {
+    const mine = Math.max(dist, week.rows.find((row) => row.uid === uid)?.best || 0);
+    const ranked = rankWeek(week.rows.filter((row) => row.uid !== uid));
+    const ahead = ranked.filter((row) => row.best > mine);
+    const target = ahead[ahead.length - 1];
+    if (target) {
+      const gap = target.best - dist + 1;
+      if (gap > 0 && gap <= Math.max(60, dist * 0.2)) {
+        options.push({ gap, text: `${formatFt(gap).toUpperCase()} FROM #${target.rank} THIS WEEK` });
+      }
+    }
+  }
+  const prevBest = state.runBest;
+  if (prevBest > 0 && dist < prevBest && dist >= prevBest * 0.75) {
+    options.push({ gap: prevBest - dist + 1, text: `${formatFt(prevBest - dist + 1).toUpperCase()} SHORT OF YOUR BEST` });
+  }
+  options.sort((a, b) => a.gap - b.gap);
+  return options[0]?.text || "";
+}
+
+function applyChase(run) {
+  if (!run || state.lastRun !== run) return;
+  const text = chaseFor(run);
+  els.resultFlavor.textContent = text || run.flavor;
+  els.resultFlavor.classList.toggle("chase", Boolean(text));
 }
 
 function toast(text, kind = "") {
@@ -1179,6 +1415,8 @@ function updatePlay(dt) {
 
   const front = state.carY + CAR_LENGTH * 0.5;
   const rear = state.carY - CAR_LENGTH * 0.5;
+  trackStop(front);
+  trackGoals();
 
   for (const light of state.lights) {
     if (light.passed) continue;
@@ -1203,8 +1441,9 @@ function updatePlay(dt) {
           return;
         }
         light.legal = true;
-        if (color === "yellow" && yellowLeft(light, state.time) < 0.28) {
-          toast("CLOSE");
+        if (color === "yellow") {
+          const left = yellowLeft(light, state.time);
+          if (left < 0.6) closeCall(left);
         }
       }
     }
@@ -1212,8 +1451,7 @@ function updatePlay(dt) {
     if (rear > clear) {
       light.passed = true;
       state.cleared += 1;
-      audio.pass();
-      rumble(8);
+      passLight(light);
     }
   }
 
@@ -1379,12 +1617,18 @@ function drawFootMarkers() {
   const best = getBest();
   const bestFeet = toFeet(best);
   const showBest = bestFeet > 0 && state.mode !== "title";
+  const leadAt = state.weekLead > 0 && state.mode !== "title" ? toFeet(state.weekLead) : -1e9;
   const first = Math.max(1, Math.ceil((state.carY + 3) / step));
   for (let k = first; k * step - state.carY < 190; k++) {
     if (showBest && Math.abs(k * 1000 - bestFeet) < 60) continue;
+    if (Math.abs(k * 1000 - leadAt) < 60) continue;
     drawRoadMark(k * step, `${(k * 1000).toLocaleString("en-US")} FT`, "#f4efe4", 0.55);
   }
   if (showBest) drawRoadMark(best, `BEST ${bestFeet.toLocaleString("en-US")} FT`, "#ffc01a", 0.8);
+  const leadFeet = toFeet(state.weekLead);
+  if (state.weekLead > 0 && state.mode !== "title" && (!showBest || Math.abs(leadFeet - bestFeet) >= 60)) {
+    drawRoadMark(state.weekLead, `#1 THIS WEEK ${leadFeet.toLocaleString("en-US")} FT`, "#ff5ad5", 0.85);
+  }
 }
 
 function drawBuildings() {
@@ -1508,6 +1752,7 @@ function drawLight(light) {
   roundRect(bx, by, boxW, boxH, Math.max(2, 6 * (1 - p.t)));
   ctx.fill();
   ctx.stroke();
+  if (light.lucky) drawGoldTrim(p.x, by, boxW, boxH, p.t);
 
   const r = Math.max(2.1, boxW * 0.2);
   const lamps = gray
@@ -1544,6 +1789,31 @@ function drawLight(light) {
     glow.addColorStop(1, hexA(col, 0));
     ctx.fillStyle = glow;
     ctx.fillRect(p.x - 80, p.y - 30, 160, 80);
+  }
+  ctx.restore();
+}
+
+function drawGoldTrim(cx, by, boxW, boxH, t) {
+  const pad = Math.max(1.5, lerp(5, 1.5, t));
+  ctx.save();
+  ctx.strokeStyle = "#ffc01a";
+  ctx.lineWidth = Math.max(1.2, lerp(3, 1, t));
+  ctx.shadowColor = "#ffc01a";
+  ctx.shadowBlur = REDUCE ? 0 : lerp(18, 6, t);
+  roundRect(cx - boxW / 2 - pad, by - pad, boxW + pad * 2, boxH + pad * 2, Math.max(3, 8 * (1 - t)));
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  const orbitX = boxW * 0.95 + pad;
+  const orbitY = boxH * 0.62 + pad;
+  const cy = by + boxH / 2;
+  for (let i = 0; i < 5; i++) {
+    const a = state.time * 2.4 + (i / 5) * Math.PI * 2;
+    const twinkle = 0.55 + Math.sin(state.time * 9 + i * 1.7) * 0.45;
+    ctx.fillStyle = i % 2 ? "#fff1b8" : "#ffc01a";
+    const s = Math.max(1, lerp(3.2, 1, t)) * twinkle;
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(a) * orbitX, cy + Math.sin(a) * orbitY, s, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -2031,11 +2301,36 @@ function updateParticles(dt) {
   }
 }
 
+function drawWaveGlow() {
+  if (state.wave < 4 || (state.mode !== "play" && state.mode !== "crash")) return;
+  const tier = waveTier();
+  const beat = 0.5 + Math.sin(state.time * (state.wave >= 10 ? 9 : 6)) * 0.5;
+  const strength = Math.min(1, (state.wave - 3) / 7) * (0.18 + beat * 0.16);
+  const hue = state.wave >= 10 ? `hsl(${Math.round((state.time * 160) % 360)}, 100%, 62%)` : tier.color;
+  const edge = Math.max(26, width * 0.12);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const side of [-1, 1]) {
+    const x0 = side < 0 ? 0 : width;
+    const g = ctx.createLinearGradient(x0, 0, x0 - side * edge, 0);
+    g.addColorStop(0, hue);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.globalAlpha = strength;
+    ctx.fillStyle = g;
+    ctx.fillRect(side < 0 ? 0 : width - edge, horizon, edge, height - horizon);
+  }
+  ctx.restore();
+}
+
 function drawFx() {
+  drawWaveGlow();
   if (state.speed > 6) {
     const n = 8 + Math.floor(state.speed * 0.45);
-    ctx.strokeStyle = `rgba(244,239,228,${0.06 + state.speed * 0.005})`;
-    ctx.lineWidth = 1.2;
+    const tinted = state.wave >= 3 && state.mode === "play";
+    ctx.strokeStyle = tinted
+      ? hexA(waveTier().color, 0.12 + state.speed * 0.006)
+      : `rgba(244,239,228,${0.06 + state.speed * 0.005})`;
+    ctx.lineWidth = tinted ? 1.6 : 1.2;
     for (let i = 0; i < n; i++) {
       const x = ((i * 89 + state.carY * 52) % (width + 40)) - 20;
       const y = horizon + 30 + ((i * 127 + state.carY * 140) % (height - horizon - 40));
@@ -2146,6 +2441,7 @@ function pauseGame() {
   hide(els.pedalWrap);
   if (state.resumeMode === "countdown") hide(els.countdown);
   show(els.pause);
+  syncWave();
   audio.ui();
 }
 
@@ -2158,6 +2454,7 @@ function resumeGame() {
   hide(els.pause);
   show(els.pedalWrap);
   if (state.mode === "countdown") show(els.countdown);
+  syncWave();
   audio.ui();
 }
 
@@ -2170,6 +2467,9 @@ function startGame() {
   resetRun("countdown");
   rollOmen();
   rollColorblind();
+  const me = authState.user?.uid;
+  const leader = week.id === weekId() ? rankWeek(week.rows)[0] : null;
+  state.weekLead = leader && leader.uid !== me ? leader.best : 0;
   state.countdown = 3;
   state.holding = false;
   state.countShown = "";
@@ -2276,6 +2576,7 @@ async function postWeekRun(user, run) {
     const saved = await saveWeekRun(user, run.week, { distance: run.distance, lights: run.lights });
     if (!saved.improved || run.week !== week.id) return;
     await track("week", loadWeek({ force: true }));
+    if (state.mode === "result") applyChase(run);
     const rank = weekRank(user.uid);
     if (rank > 0 && state.mode === "result" && state.lastRun === run) {
       toast(rank === 1 ? "#1 THIS WEEK" : `#${rank} THIS WEEK`, "place");
@@ -2879,6 +3180,10 @@ if (import.meta.env.DEV) {
   window.__car = (id) => {
     state.car = CAR_IDS.includes(id) ? id : "taxi";
     audio.setCar(state.car);
+  };
+  window.__wave = (n, lucky = false) => {
+    state.wave = n - 1;
+    passLight({ lucky });
   };
   window.__endRun = (reason = "time", dist = 847, left) => {
     hide(els.title);

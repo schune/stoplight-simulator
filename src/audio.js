@@ -59,6 +59,7 @@ export function createAudio() {
     },
   };
   let profile = PROFILES.taxi;
+  const WAVE_SCALE = [523, 587, 659, 784, 880, 1046, 1175, 1318, 1568, 1760, 2093];
 
   function applyProfile() {
     if (!engine) return;
@@ -282,9 +283,55 @@ export function createAudio() {
       beep(740, 0.09, "triangle", 0.04);
       setTimeout(() => beep(740, 0.07, "triangle", 0.028), 90);
     },
-    pass() {
-      beep(523, 0.06, "sine", 0.035);
-      beep(784, 0.1, "triangle", 0.04);
+    pass(level = 1) {
+      const note = WAVE_SCALE[Math.min(WAVE_SCALE.length - 1, Math.max(0, level - 1))];
+      beep(note, 0.06, "sine", 0.035);
+      beep(note * 1.5, 0.11, "triangle", 0.04);
+      if (level >= 4) setTimeout(() => beep(note * 2, 0.09, "sine", 0.022), 55);
+      if (level >= 7) setTimeout(() => beep(note * 3, 0.12, "sine", 0.016), 110);
+      noiseBurst(0.18, 0.025 + Math.min(level, 10) * 0.004, 2200, "bandpass");
+    },
+    waveUp(level) {
+      const root = WAVE_SCALE[Math.min(WAVE_SCALE.length - 4, Math.floor(level / 5) + 2)];
+      [1, 1.25, 1.5, 2].forEach((m, i) => setTimeout(() => beep(root * m, 0.12, "square", 0.03), i * 55));
+      setTimeout(() => chord([root * 2, root * 2.5, root * 3], 0.4, "triangle", 0.035), 230);
+      noiseBurst(0.5, 0.05, 5200, "highpass");
+    },
+    waveLost() {
+      beep(392, 0.16, "triangle", 0.035, -150);
+      setTimeout(() => beep(294, 0.24, "triangle", 0.03, -120), 120);
+    },
+    close(razor) {
+      noiseBurst(0.26, razor ? 0.11 : 0.07, 3000, "bandpass");
+      beep(razor ? 1568 : 1175, 0.05, "square", 0.028, 500);
+      setTimeout(() => beep(razor ? 2093 : 1568, 0.08, "square", 0.024, 700), 60);
+      if (razor) setTimeout(() => chord([1046, 1318, 1568], 0.24, "triangle", 0.03), 140);
+    },
+    perfect() {
+      chord([1046, 1568], 0.32, "sine", 0.04);
+      setTimeout(() => beep(2093, 0.4, "sine", 0.026), 90);
+    },
+    jackpot() {
+      for (let i = 0; i < 10; i++) {
+        setTimeout(() => beep(1500 + Math.random() * 1300, 0.06, "square", 0.022), i * 38);
+      }
+      chord([784, 988, 1175, 1568], 0.45, "triangle", 0.035);
+      setTimeout(() => chord([1046, 1318, 1568, 2093], 0.5, "triangle", 0.03), 260);
+    },
+    lead() {
+      [523, 659, 784, 1046, 1318].forEach((f, i) => setTimeout(() => beep(f, 0.1, "square", 0.032), i * 60));
+      setTimeout(() => chord([1046, 1318, 1568], 0.5, "triangle", 0.04), 320);
+    },
+    tick(urgency = 0) {
+      beep(880 + urgency * 110, 0.05, "square", 0.03 + urgency * 0.004);
+      beep(110, 0.08, "sine", 0.06);
+    },
+    tally(p) {
+      beep(520 + p * 1100, 0.028, "square", 0.016);
+    },
+    ding() {
+      chord([1318, 1976], 0.4, "sine", 0.04);
+      noiseBurst(0.3, 0.03, 6000, "highpass");
     },
     brake() {
       noiseBurst(0.16, 0.09, 1400, "bandpass");
