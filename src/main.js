@@ -19,7 +19,6 @@ const BOARD_METRIC_KEY = "stoplight-sim-board-tab-v2";
 const MEDAL_SEEN_KEY = "stoplight-sim-medal-seen";
 const BOARD_METRICS = ["week", "best", "total"];
 const SHARE_URL = "https://stoplightsimulator.com/";
-const GOLD_ODDS = 0.12;
 const WAVE_TIERS = [
   { min: 10, color: "#ff5ad5", name: "rainbow" },
   { min: 7, color: "#ff5ad5", name: "hot" },
@@ -656,10 +655,6 @@ function generateWorld() {
     });
     y += Math.max(22, spacing);
   }
-  lights.forEach((light, i) => {
-    light.lucky = i > 1 && Math.random() < GOLD_ODDS;
-  });
-
   const buildings = [];
   for (let i = 0; i < 120; i++) {
     const z = i * 26 + rand(0, 16);
@@ -720,7 +715,6 @@ function resetRun(mode) {
   state.sportAnnounced = false;
   state.wave = 0;
   state.waveBest = 0;
-  state.gold = 0;
   state.stopArmed = false;
   state.runBest = getBest();
   state.bestCrossed = false;
@@ -915,7 +909,7 @@ function carSparks(colors, n, power = 1) {
   }
 }
 
-function passLight(light) {
+function passLight() {
   state.wave += 1;
   state.waveBest = Math.max(state.waveBest, state.wave);
   const tier = waveTier();
@@ -929,14 +923,6 @@ function passLight(light) {
     flashTint(tier.color, 420);
     shower([tier.color, "#f4efe4", "#ffc01a"], 34);
     rumble([14, 30, 14, 30, 40]);
-  }
-  if (light.lucky) {
-    state.gold += 1;
-    audio.jackpot();
-    if (state.wave % 5 !== 0) toast("GOLD LIGHT");
-    flashScreen("best", 360);
-    shower(["#ffc01a", "#fff1b8", "#ffdc5e", "#f4efe4"], 46, { g: 380 });
-    rumble([12, 20, 12, 20, 12, 60]);
   }
   syncWave(true);
 }
@@ -1310,7 +1296,6 @@ function endRun(reason) {
 function runSummary() {
   const parts = [`${state.cleared} LIGHT${state.cleared === 1 ? "" : "S"}`];
   if (state.waveBest >= 2) parts.push(`WAVE ×${state.waveBest}`);
-  if (state.gold) parts.push(`${state.gold} GOLD`);
   return parts.join(" · ");
 }
 
@@ -1451,7 +1436,7 @@ function updatePlay(dt) {
     if (rear > clear) {
       light.passed = true;
       state.cleared += 1;
-      passLight(light);
+      passLight();
     }
   }
 
@@ -1752,7 +1737,6 @@ function drawLight(light) {
   roundRect(bx, by, boxW, boxH, Math.max(2, 6 * (1 - p.t)));
   ctx.fill();
   ctx.stroke();
-  if (light.lucky) drawGoldTrim(p.x, by, boxW, boxH, p.t);
 
   const r = Math.max(2.1, boxW * 0.2);
   const lamps = gray
@@ -1789,31 +1773,6 @@ function drawLight(light) {
     glow.addColorStop(1, hexA(col, 0));
     ctx.fillStyle = glow;
     ctx.fillRect(p.x - 80, p.y - 30, 160, 80);
-  }
-  ctx.restore();
-}
-
-function drawGoldTrim(cx, by, boxW, boxH, t) {
-  const pad = Math.max(1.5, lerp(5, 1.5, t));
-  ctx.save();
-  ctx.strokeStyle = "#ffc01a";
-  ctx.lineWidth = Math.max(1.2, lerp(3, 1, t));
-  ctx.shadowColor = "#ffc01a";
-  ctx.shadowBlur = REDUCE ? 0 : lerp(18, 6, t);
-  roundRect(cx - boxW / 2 - pad, by - pad, boxW + pad * 2, boxH + pad * 2, Math.max(3, 8 * (1 - t)));
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-  const orbitX = boxW * 0.95 + pad;
-  const orbitY = boxH * 0.62 + pad;
-  const cy = by + boxH / 2;
-  for (let i = 0; i < 5; i++) {
-    const a = state.time * 2.4 + (i / 5) * Math.PI * 2;
-    const twinkle = 0.55 + Math.sin(state.time * 9 + i * 1.7) * 0.45;
-    ctx.fillStyle = i % 2 ? "#fff1b8" : "#ffc01a";
-    const s = Math.max(1, lerp(3.2, 1, t)) * twinkle;
-    ctx.beginPath();
-    ctx.arc(cx + Math.cos(a) * orbitX, cy + Math.sin(a) * orbitY, s, 0, Math.PI * 2);
-    ctx.fill();
   }
   ctx.restore();
 }
@@ -3181,9 +3140,9 @@ if (import.meta.env.DEV) {
     state.car = CAR_IDS.includes(id) ? id : "taxi";
     audio.setCar(state.car);
   };
-  window.__wave = (n, lucky = false) => {
+  window.__wave = (n) => {
     state.wave = n - 1;
-    passLight({ lucky });
+    passLight();
   };
   window.__endRun = (reason = "time", dist = 847, left) => {
     hide(els.title);
