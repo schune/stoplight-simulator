@@ -311,6 +311,13 @@ export function createAudio() {
       chord([1046, 1568], 0.32, "sine", 0.04);
       setTimeout(() => beep(2093, 0.4, "sine", 0.026), 90);
     },
+    jackpot() {
+      for (let i = 0; i < 10; i++) {
+        setTimeout(() => beep(1500 + Math.random() * 1300, 0.06, "square", 0.022), i * 38);
+      }
+      chord([784, 988, 1175, 1568], 0.45, "triangle", 0.035);
+      setTimeout(() => chord([1046, 1318, 1568, 2093], 0.5, "triangle", 0.03), 260);
+    },
     lead() {
       [523, 659, 784, 1046, 1318].forEach((f, i) => setTimeout(() => beep(f, 0.1, "square", 0.032), i * 60));
       setTimeout(() => chord([1046, 1318, 1568], 0.5, "triangle", 0.04), 320);

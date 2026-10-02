@@ -19,6 +19,8 @@ const BOARD_METRIC_KEY = "stoplight-sim-board-tab-v2";
 const MEDAL_SEEN_KEY = "stoplight-sim-medal-seen";
 const BOARD_METRICS = ["week", "best", "total"];
 const SHARE_URL = "https://stoplightsimulator.com/";
+const GOLD_ODDS = 0.075;
+const GOLD_FEET = 100;
 const WAVE_TIERS = [
   { min: 10, color: "#ff5ad5", name: "rainbow" },
   { min: 7, color: "#ff5ad5", name: "hot" },
@@ -255,13 +257,18 @@ function toFeet(meters) {
   return Math.round((Number(meters) || 0) * FT_PER_M);
 }
 
+function runScore() {
+  return state.carY + state.bonus;
+}
+
 function projectedMeters(dist, remaining) {
   const left = Math.max(0, Number(remaining) || 0);
   const elapsed = RUN_SECONDS - left;
   const skip = 1;
-  const startDist = Math.min(dist, Number(state.ghostTape[Math.round(skip * GHOST_HZ)]) || 0);
+  const road = state.carY;
+  const startDist = Math.min(road, Number(state.ghostTape[Math.round(skip * GHOST_HZ)]) || 0);
   const pace =
-    elapsed >= skip + 0.25 ? Math.max(0, dist - startDist) / (elapsed - skip) : Math.max(0, state.speed);
+    elapsed >= skip + 0.25 ? Math.max(0, road - startDist) / (elapsed - skip) : Math.max(0, state.speed);
   return Math.max(dist, Math.round(dist + pace * left));
 }
 
@@ -465,7 +472,7 @@ function chooseCar(id) {
 function maybeUnlockSport() {
   if (state.sportAnnounced || state.mode !== "play") return;
   if (toFeet(getBest()) >= SPORT_FEET) return;
-  if (toFeet(state.carY) < SPORT_FEET) return;
+  if (toFeet(runScore()) < SPORT_FEET) return;
   state.sportAnnounced = true;
   toast("SPORT UNLOCKED", "place");
   syncGarage();
@@ -655,6 +662,7 @@ function generateWorld() {
     });
     y += Math.max(22, spacing);
   }
+  for (const light of lights) light.lucky = Math.random() < GOLD_ODDS;
   const buildings = [];
   for (let i = 0; i < 120; i++) {
     const z = i * 26 + rand(0, 16);
@@ -715,6 +723,8 @@ function resetRun(mode) {
   state.sportAnnounced = false;
   state.wave = 0;
   state.waveBest = 0;
+  state.gold = 0;
+  state.bonus = 0;
   state.stopArmed = false;
   state.runBest = getBest();
   state.bestCrossed = false;
@@ -909,7 +919,7 @@ function carSparks(colors, n, power = 1) {
   }
 }
 
-function passLight() {
+function passLight(light) {
   state.wave += 1;
   state.waveBest = Math.max(state.waveBest, state.wave);
   const tier = waveTier();
@@ -923,6 +933,18 @@ function passLight() {
     flashTint(tier.color, 420);
     shower([tier.color, "#f4efe4", "#ffc01a"], 34);
     rumble([14, 30, 14, 30, 40]);
+  }
+  if (light?.lucky) {
+    state.gold += 1;
+    state.bonus += GOLD_FEET / FT_PER_M;
+    audio.jackpot();
+    toast(`+${GOLD_FEET} FT`);
+    flashScreen("best", 360);
+    shower(["#ffc01a", "#fff1b8", "#ffdc5e", "#f4efe4"], 40, { g: 380 });
+    rumble([12, 20, 12, 20, 12, 60]);
+    els.dist.classList.remove("tick");
+    void els.dist.offsetWidth;
+    els.dist.classList.add("tick");
   }
   syncWave(true);
 }
@@ -973,7 +995,7 @@ function trackStop(front) {
 }
 
 function trackGoals() {
-  if (!state.bestCrossed && state.runBest > 30 && state.carY > state.runBest) {
+  if (!state.bestCrossed && state.runBest > 30 && runScore() > state.runBest) {
     state.bestCrossed = true;
     toast("NEW BEST");
     audio.best();
@@ -981,7 +1003,7 @@ function trackGoals() {
     shower(["#ffc01a", "#f4efe4", "#22e38a", "#ff5ad5"], 56);
     rumble([20, 40, 30, 70]);
   }
-  if (!state.leadCrossed && state.weekLead > 30 && state.carY > state.weekLead) {
+  if (!state.leadCrossed && state.weekLead > 30 && runScore() > state.weekLead) {
     state.leadCrossed = true;
     toast(authState.user ? "WEEKLY LEAD" : "BEAT #1 THIS WEEK");
     audio.lead();
@@ -1172,7 +1194,7 @@ function renderTops(tops, rank) {
 function endRun(reason) {
   if (state.mode === "result") return;
   stampGhost();
-  const dist = Math.round(state.carY);
+  const dist = Math.round(runScore());
   const rec = recordTop(dist);
   const best = getBest();
   const omen = OMEN[reason];
@@ -1296,6 +1318,7 @@ function endRun(reason) {
 function runSummary() {
   const parts = [`${state.cleared} LIGHT${state.cleared === 1 ? "" : "S"}`];
   if (state.waveBest >= 2) parts.push(`WAVE ×${state.waveBest}`);
+  if (state.gold) parts.push(`+${(state.gold * GOLD_FEET).toLocaleString("en-US")} GOLD`);
   return parts.join(" · ");
 }
 
@@ -1436,11 +1459,11 @@ function updatePlay(dt) {
     if (rear > clear) {
       light.passed = true;
       state.cleared += 1;
-      passLight();
+      passLight(light);
     }
   }
 
-  const thousands = Math.floor(toFeet(state.carY) / 1000);
+  const thousands = Math.floor(toFeet(runScore()) / 1000);
   if (thousands > state.belt) {
     toast(`${(thousands * 1000).toLocaleString("en-US")} FT`, "place");
     rumble([10, 24, 10]);
@@ -1603,16 +1626,17 @@ function drawFootMarkers() {
   const bestFeet = toFeet(best);
   const showBest = bestFeet > 0 && state.mode !== "title";
   const leadAt = state.weekLead > 0 && state.mode !== "title" ? toFeet(state.weekLead) : -1e9;
-  const first = Math.max(1, Math.ceil((state.carY + 3) / step));
-  for (let k = first; k * step - state.carY < 190; k++) {
+  const off = state.bonus || 0;
+  const first = Math.max(1, Math.ceil((runScore() + 3) / step));
+  for (let k = first; k * step - runScore() < 190; k++) {
     if (showBest && Math.abs(k * 1000 - bestFeet) < 60) continue;
     if (Math.abs(k * 1000 - leadAt) < 60) continue;
-    drawRoadMark(k * step, `${(k * 1000).toLocaleString("en-US")} FT`, "#f4efe4", 0.55);
+    drawRoadMark(k * step - off, `${(k * 1000).toLocaleString("en-US")} FT`, "#f4efe4", 0.55);
   }
-  if (showBest) drawRoadMark(best, `BEST ${bestFeet.toLocaleString("en-US")} FT`, "#ffc01a", 0.8);
+  if (showBest) drawRoadMark(best - off, `BEST ${bestFeet.toLocaleString("en-US")} FT`, "#ffc01a", 0.8);
   const leadFeet = toFeet(state.weekLead);
   if (state.weekLead > 0 && state.mode !== "title" && (!showBest || Math.abs(leadFeet - bestFeet) >= 60)) {
-    drawRoadMark(state.weekLead, `#1 THIS WEEK ${leadFeet.toLocaleString("en-US")} FT`, "#ff5ad5", 0.85);
+    drawRoadMark(state.weekLead - off, `#1 THIS WEEK ${leadFeet.toLocaleString("en-US")} FT`, "#ff5ad5", 0.85);
   }
 }
 
@@ -1737,6 +1761,7 @@ function drawLight(light) {
   roundRect(bx, by, boxW, boxH, Math.max(2, 6 * (1 - p.t)));
   ctx.fill();
   ctx.stroke();
+  if (light.lucky) drawGoldTrim(p.x, by, boxW, boxH, p.t);
 
   const r = Math.max(2.1, boxW * 0.2);
   const lamps = gray
@@ -1773,6 +1798,38 @@ function drawLight(light) {
     glow.addColorStop(1, hexA(col, 0));
     ctx.fillStyle = glow;
     ctx.fillRect(p.x - 80, p.y - 30, 160, 80);
+  }
+  ctx.restore();
+}
+
+function drawGoldTrim(cx, by, boxW, boxH, t) {
+  const pad = Math.max(1.2, lerp(4, 1.2, t));
+  ctx.save();
+  ctx.strokeStyle = "#ffc01a";
+  ctx.lineWidth = Math.max(1, lerp(2, 0.8, t));
+  ctx.shadowColor = "#ffc01a";
+  ctx.shadowBlur = REDUCE ? 0 : lerp(10, 4, t);
+  roundRect(cx - boxW / 2 - pad, by - pad, boxW + pad * 2, boxH + pad * 2, Math.max(3, 8 * (1 - t)));
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  const size = Math.round(Math.min(15, boxW * 0.62));
+  if (size >= 8) {
+    ctx.fillStyle = "#ffc01a";
+    ctx.font = `${size}px Anton, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(`+${GOLD_FEET}`, cx, by - pad - 2);
+  }
+  const orbitX = boxW * 0.9 + pad;
+  const orbitY = boxH * 0.58 + pad;
+  const cy = by + boxH / 2;
+  for (let i = 0; i < 3; i++) {
+    const a = state.time * 1.6 + (i / 3) * Math.PI * 2;
+    const twinkle = 0.55 + Math.sin(state.time * 6 + i * 2.1) * 0.45;
+    ctx.fillStyle = i % 2 ? "#fff1b8" : "#ffc01a";
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(a) * orbitX, cy + Math.sin(a) * orbitY, Math.max(0.8, lerp(2.4, 0.8, t)) * twinkle, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -2350,7 +2407,7 @@ function updateHud() {
   els.hud.classList.toggle("is-critical", t < 8);
   els.timeFuse.style.transform = `scaleX(${frac})`;
   els.timeFill.style.height = `${frac * 100}%`;
-  const feet = toFeet(state.carY);
+  const feet = toFeet(runScore());
   els.dist.textContent = `${feet}`;
   const mark = Math.floor(feet / 500);
   if (mark > state.ftMark && state.mode === "play") {
@@ -3140,9 +3197,12 @@ if (import.meta.env.DEV) {
     state.car = CAR_IDS.includes(id) ? id : "taxi";
     audio.setCar(state.car);
   };
-  window.__wave = (n) => {
+  window.__gold = () => {
+    for (const light of state.lights) light.lucky = true;
+  };
+  window.__wave = (n, lucky = false) => {
     state.wave = n - 1;
-    passLight();
+    passLight({ lucky });
   };
   window.__endRun = (reason = "time", dist = 847, left) => {
     hide(els.title);
