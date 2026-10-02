@@ -1,7 +1,9 @@
 import "./style.css";
 import { createAudio } from "./audio.js";
 import { authState, onAuthChange, signInWithGoogle, signOut, startAuth } from "./auth.js";
-import { fetchBoard, loadProfile, rankBoard, saveRun } from "./scores.js";
+import { loadMedals, medals, medalsFor } from "./medals.js";
+import { fetchBoard, fetchWeek, loadProfile, rankBoard, rankWeek, saveRun, saveWeekRun } from "./scores.js";
+import { countdown, shiftWeek, weekEnd, weekId, weekLabel } from "./weeks.js";
 
 const GHOST_PAGE = /^\/ghost\/?$/.test(location.pathname);
 
@@ -13,7 +15,9 @@ const BEST_KEY = "stoplight-sim-best-v2";
 const CAR_KEY = "stoplight-sim-car-v1";
 const SPORT_FEET = 4000;
 const TOP_KEY = "stoplight-sim-tops-v2";
-const BOARD_METRIC_KEY = "stoplight-sim-board-metric";
+const BOARD_METRIC_KEY = "stoplight-sim-board-tab-v2";
+const MEDAL_SEEN_KEY = "stoplight-sim-medal-seen";
+const BOARD_METRICS = ["week", "best", "total"];
 const SHARE_URL = "https://stoplightsimulator.com/";
 const GHOST_HZ = 10;
 const RUN_SECONDS = 60;
@@ -87,11 +91,33 @@ const els = {
   authUser: document.getElementById("auth-user"),
   authName: document.getElementById("auth-name"),
   authPhoto: document.getElementById("auth-photo"),
+  authMedals: document.getElementById("auth-medals"),
+  titleWeek: document.getElementById("title-week"),
   board: document.getElementById("board"),
+  boardFlavor: document.getElementById("board-flavor"),
   boardList: document.getElementById("board-list"),
   boardEmpty: document.getElementById("board-empty"),
-  tabBest: document.getElementById("tab-best"),
-  tabTotal: document.getElementById("tab-total"),
+  boardMeta: document.getElementById("board-meta"),
+  boardEnds: document.getElementById("board-ends"),
+  boardLast: document.getElementById("board-last"),
+  tabs: {
+    week: document.getElementById("tab-week"),
+    best: document.getElementById("tab-best"),
+    total: document.getElementById("tab-total"),
+  },
+  profile: document.getElementById("profile"),
+  profilePhoto: document.getElementById("profile-photo"),
+  profileName: document.getElementById("profile-name"),
+  profileMedalCount: document.getElementById("profile-medal-count"),
+  profileMedals: document.getElementById("profile-medals"),
+  profileMedalEmpty: document.getElementById("profile-medal-empty"),
+  profileWeek: document.getElementById("profile-week"),
+  profileWeekRank: document.getElementById("profile-week-rank"),
+  profileBest: document.getElementById("profile-best"),
+  profileBestRank: document.getElementById("profile-best-rank"),
+  profileTotal: document.getElementById("profile-total"),
+  profileTotalRank: document.getElementById("profile-total-rank"),
+  btnProfileClose: document.getElementById("btn-profile-close"),
   mute: document.getElementById("btn-mute"),
   pause: document.getElementById("pause"),
   btnPause: document.getElementById("btn-pause"),
@@ -195,7 +221,14 @@ let height = 844;
 let horizon = 280;
 let dpr = 1;
 let boardRows = [];
-let boardMetric = localStorage.getItem(BOARD_METRIC_KEY) === "total" ? "total" : "best";
+let boardMetric = BOARD_METRICS.includes(localStorage.getItem(BOARD_METRIC_KEY))
+  ? localStorage.getItem(BOARD_METRIC_KEY)
+  : "week";
+const week = { id: weekId(), rows: [], loadedAt: 0, loading: null };
+let boardLoadedAt = 0;
+let boardLoading = null;
+let profileUid = "";
+let profileFrom = "";
 let last = performance.now();
 
 function rand(min, max) {
@@ -987,6 +1020,7 @@ function endRun(reason) {
     lights: state.cleared,
     reason,
     remaining: Math.max(0, state.remaining),
+    week: weekId(),
   };
   hide(els.hud);
   hide(els.pedalWrap);
@@ -2142,6 +2176,7 @@ function startGame() {
   hide(els.title);
   hide(els.result);
   hide(els.board);
+  hide(els.profile);
   hide(els.pause);
   hide(els.authBar);
   hide(els.authError);
@@ -2162,6 +2197,7 @@ function backToTitle() {
   resetRun("title");
   hide(els.result);
   hide(els.board);
+  hide(els.profile);
   hide(els.pause);
   hide(els.hud);
   hide(els.pedalWrap);
@@ -2200,6 +2236,8 @@ function syncAuthUi() {
     if (state.mode === "result") show(els.btnSave);
     else hide(els.btnSave);
   }
+  syncMedalChip();
+  syncTitleWeek();
   if (authState.error) {
     els.authError.textContent = authState.error;
     show(els.authError);
@@ -2228,6 +2266,127 @@ async function postRun() {
     authState.error = "Could not post that run to the board.";
     syncAuthUi();
   }
+  await postWeekRun(user, run);
+}
+
+async function postWeekRun(user, run) {
+  if (run.weekPosted || Date.now() > weekEnd(run.week) + 10 * 60000) return;
+  run.weekPosted = true;
+  try {
+    const saved = await saveWeekRun(user, run.week, { distance: run.distance, lights: run.lights });
+    if (!saved.improved || run.week !== week.id) return;
+    await track("week", loadWeek({ force: true }));
+    const rank = weekRank(user.uid);
+    if (rank > 0 && state.mode === "result" && state.lastRun === run) {
+      toast(rank === 1 ? "#1 THIS WEEK" : `#${rank} THIS WEEK`, "place");
+      if (rank === 1) audio.top();
+    }
+    syncTitleWeek();
+  } catch (error) {
+    run.weekPosted = false;
+    console.warn(error);
+  }
+}
+
+function weekRank(uid) {
+  return rankWeek(week.rows).find((row) => row.uid === uid)?.rank || 0;
+}
+
+function syncWeekId() {
+  const id = weekId();
+  if (id === week.id) return false;
+  week.id = id;
+  week.rows = [];
+  week.loadedAt = 0;
+  void loadMedals({ force: true }).then(onMedals);
+  return true;
+}
+
+function loadWeek({ force = false } = {}) {
+  syncWeekId();
+  if (week.loading) {
+    return force ? week.loading.catch(() => {}).then(() => loadWeek({ force: true })) : week.loading;
+  }
+  if (!force && Date.now() - week.loadedAt < 30000) return Promise.resolve(week.rows);
+  const id = week.id;
+  week.loading = fetchWeek(id)
+    .then((rows) => {
+      if (id === week.id) {
+        week.rows = rows;
+        week.loadedAt = Date.now();
+      }
+      return week.rows;
+    })
+    .finally(() => {
+      week.loading = null;
+    });
+  return week.loading;
+}
+
+function loadBoardRows({ force = false } = {}) {
+  if (boardLoading) return boardLoading;
+  if (!force && Date.now() - boardLoadedAt < 30000) return Promise.resolve(boardRows);
+  boardLoading = Promise.race([
+    fetchBoard(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
+  ])
+    .then((rows) => {
+      boardRows = rows;
+      boardLoadedAt = Date.now();
+      return rows;
+    })
+    .finally(() => {
+      boardLoading = null;
+    });
+  return boardLoading;
+}
+
+function medalLabel(n) {
+  return `${n} weekly medal${n === 1 ? "" : "s"}`;
+}
+
+function medalInner(n) {
+  return `<i class="medal" aria-hidden="true"></i>${n > 1 ? `<b>${n}</b>` : ""}`;
+}
+
+function medalTag(uid) {
+  const n = medalsFor(uid).length;
+  if (!n) return "";
+  return `<span class="medal-tag" title="${medalLabel(n)}" aria-label="${medalLabel(n)}">${medalInner(n)}</span>`;
+}
+
+function syncMedalChip() {
+  const uid = authState.user?.uid;
+  const n = uid ? medalsFor(uid).length : 0;
+  els.authMedals.innerHTML = n ? medalInner(n) : "";
+  els.authMedals.setAttribute("aria-label", n ? medalLabel(n) : "");
+  els.authMedals.classList.toggle("hidden", !n);
+}
+
+function syncTitleWeek() {
+  syncWeekId();
+  const left = countdown(weekEnd(week.id) - Date.now());
+  const uid = authState.user?.uid;
+  const rank = uid ? weekRank(uid) : 0;
+  els.titleWeek.textContent = rank ? `#${rank} THIS WEEK · ENDS IN ${left}` : `WEEKLY MEDAL · ENDS IN ${left}`;
+}
+
+function onMedals() {
+  syncMedalChip();
+  rerenderLeaders();
+  announceMedal();
+}
+
+function announceMedal() {
+  const uid = authState.user?.uid;
+  if (!uid) return;
+  const lastWeek = shiftWeek(weekId(), -1);
+  const won = medalsFor(uid).find((m) => m.week === lastWeek);
+  if (!won || localStorage.getItem(MEDAL_SEEN_KEY) === `${uid}:${lastWeek}`) return;
+  if (state.mode !== "title" && state.mode !== "result") return;
+  localStorage.setItem(MEDAL_SEEN_KEY, `${uid}:${lastWeek}`);
+  toast("YOU WON THE WEEK", "place");
+  audio.best();
 }
 
 async function mergeCloudBest() {
@@ -2269,73 +2428,121 @@ function safePhoto(url) {
   return "/favicon.svg";
 }
 
+const boardStatus = { week: "idle", best: "idle" };
+
+const BOARD_FLAVOR = {
+  week: ["Top run by Sunday midnight CT wins a medal.", "Sign in to race for this week’s medal."],
+  best: ["Best single run, all time.", "Sign in to save your score on the leaderboard."],
+  total: ["Every foot driven, all time.", "Sign in to save your score on the leaderboard."],
+};
+
+function boardRanked() {
+  if (boardMetric === "week") return rankWeek(week.rows);
+  return rankBoard(boardRows, boardMetric);
+}
+
+function renderBoardMeta() {
+  const weekly = boardMetric === "week";
+  els.boardMeta.classList.toggle("hidden", !weekly);
+  els.boardFlavor.textContent = BOARD_FLAVOR[boardMetric][authState.user ? 0 : 1];
+  if (!weekly) return;
+  els.boardEnds.textContent = `${weekLabel(week.id)} · ENDS IN ${countdown(weekEnd(week.id) - Date.now())}`;
+  const champ = medals.champions.find((c) => c.week === shiftWeek(week.id, -1));
+  if (champ) {
+    els.boardLast.innerHTML = `LAST WEEK <i class="medal" aria-hidden="true"></i> ${safeText(boardName(champ.name))}`;
+    show(els.boardLast);
+  } else {
+    hide(els.boardLast);
+  }
+}
+
 function renderBoard() {
+  renderBoardMeta();
   els.boardList.innerHTML = "";
   const me = authState.user?.uid;
-  const rows = rankBoard(boardRows, boardMetric);
+  const weekly = boardMetric === "week";
+  const rows = boardRanked();
   for (const row of rows) {
     const item = document.createElement("li");
+    item.dataset.uid = row.uid;
+    item.tabIndex = 0;
+    item.setAttribute("role", "button");
     if (row.uid === me) item.classList.add("me");
+    if (weekly && row.rank === 1) item.classList.add("lead");
     item.innerHTML = `
       <span class="rank">${row.rank}</span>
       <img alt="" referrerpolicy="no-referrer" src="${safePhoto(row.photoUrl)}" />
-      <span class="who">${safeText(boardName(row.name))}</span>
+      <span class="who"><span class="nm">${safeText(boardName(row.name))}</span>${medalTag(row.uid)}</span>
       <span class="meters">${formatFt(row.shown, { miles: boardMetric === "total" })}</span>
     `;
     els.boardList.appendChild(item);
   }
+  const status = boardStatus[weekly ? "week" : "best"];
   if (rows.length) hide(els.boardEmpty);
   else {
-    els.boardEmpty.textContent = "No ranked runs yet.";
+    if (status === "loading" || status === "idle") els.boardEmpty.textContent = "Loading…";
+    else if (status === "error") els.boardEmpty.textContent = "Couldn’t load the leaderboard. Try again.";
+    else els.boardEmpty.textContent = weekly ? "No runs yet this week. Take the lead." : "No ranked runs yet.";
     show(els.boardEmpty);
   }
-  els.boardList.dataset.ready = "1";
+  if (status === "ok" || rows.length) els.boardList.dataset.ready = "1";
 }
 
 function syncBoardTabs() {
-  const total = boardMetric === "total";
-  els.tabBest.setAttribute("aria-selected", total ? "false" : "true");
-  els.tabTotal.setAttribute("aria-selected", total ? "true" : "false");
+  for (const id of BOARD_METRICS) els.tabs[id].setAttribute("aria-selected", id === boardMetric ? "true" : "false");
 }
 
 function setBoardMetric(metric) {
-  boardMetric = metric === "total" ? "total" : "best";
+  boardMetric = BOARD_METRICS.includes(metric) ? metric : "week";
   localStorage.setItem(BOARD_METRIC_KEY, boardMetric);
   syncBoardTabs();
+  delete els.boardList.dataset.ready;
   renderBoard();
   audio.ui();
 }
 
-async function openBoard() {
+function rerenderLeaders() {
+  if (!els.board.classList.contains("hidden")) renderBoard();
+  if (!els.profile.classList.contains("hidden")) renderProfile();
+  syncTitleWeek();
+}
+
+function track(key, promise) {
+  if (boardStatus[key] !== "ok") boardStatus[key] = "loading";
+  return promise
+    .then(() => {
+      boardStatus[key] = "ok";
+    })
+    .catch((error) => {
+      console.warn(error);
+      if (boardStatus[key] !== "ok") boardStatus[key] = "error";
+    })
+    .finally(rerenderLeaders);
+}
+
+function refreshLeaders() {
+  return Promise.all([
+    track("best", loadBoardRows({ force: true })),
+    track("week", loadWeek({ force: true })),
+    loadMedals().then(onMedals, (error) => console.warn(error)),
+  ]);
+}
+
+function openBoard() {
   audio.ui();
   hide(els.title);
   hide(els.result);
+  hide(els.profile);
   show(els.board);
   show(els.authBar);
   hide(els.btnBoard);
   syncBoardTabs();
-  els.boardEmpty.textContent = "Loading…";
-  show(els.boardEmpty);
-  els.boardList.innerHTML = "";
   delete els.boardList.dataset.ready;
-  boardRows = [];
-  try {
-    boardRows = await Promise.race([
-      fetchBoard(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
-    ]);
-    renderBoard();
-  } catch (error) {
-    console.warn(error);
-    boardRows = [];
-    els.boardEmpty.textContent = "Couldn’t load the leaderboard. Try again.";
-    show(els.boardEmpty);
-  }
+  renderBoard();
+  void refreshLeaders();
 }
 
-function closeBoard() {
-  audio.ui();
-  hide(els.board);
+function returnHome() {
   if (state.mode === "result") show(els.result);
   else {
     show(els.title);
@@ -2343,6 +2550,84 @@ function closeBoard() {
   }
   show(els.authBar);
   show(els.btnBoard);
+}
+
+function closeBoard() {
+  audio.ui();
+  hide(els.board);
+  returnHome();
+}
+
+function rankOf(rows, uid) {
+  return rows.find((row) => row.uid === uid) || null;
+}
+
+function renderProfile() {
+  const uid = profileUid;
+  const me = authState.user;
+  const own = Boolean(me && me.uid === uid);
+  const weekRow = rankOf(rankWeek(week.rows), uid);
+  const bestRow = rankOf(rankBoard(boardRows, "best"), uid);
+  const totalRow = rankOf(rankBoard(boardRows, "total"), uid);
+  const won = medalsFor(uid);
+  const champ = won[0];
+  const name = (own && me.name) || bestRow?.name || weekRow?.name || champ?.name || "Night driver";
+  const photo = (own && me.photoUrl) || bestRow?.photoUrl || weekRow?.photoUrl || champ?.photoUrl || "";
+  els.profilePhoto.src = safePhoto(photo);
+  els.profileName.textContent = boardName(name).toUpperCase();
+  els.profileMedalCount.innerHTML = won.length
+    ? `<i class="medal" aria-hidden="true"></i> ${won.length} WEEKLY MEDAL${won.length === 1 ? "" : "S"}`
+    : "NO MEDALS YET";
+  els.profileMedals.innerHTML = won
+    .map(
+      (m) =>
+        `<li><i class="medal" aria-hidden="true"></i><span>${weekLabel(m.week)}</span><span class="meters">${formatFt(m.best)}</span></li>`
+    )
+    .join("");
+  els.profileMedals.classList.toggle("hidden", !won.length);
+  els.profileMedalEmpty.classList.toggle("hidden", Boolean(won.length));
+  els.profileMedalEmpty.textContent = own
+    ? "Finish a week with the top run to earn a medal."
+    : "No weekly wins yet.";
+  els.profileWeek.textContent = weekRow ? formatFt(weekRow.best) : "—";
+  els.profileWeekRank.textContent = weekRow ? `#${weekRow.rank}` : "";
+  const best = own ? Math.max(getBest(), bestRow?.best || 0) : bestRow?.best;
+  els.profileBest.textContent = best ? formatFt(best) : "—";
+  els.profileBestRank.textContent = bestRow ? `#${bestRow.rank}` : "";
+  els.profileTotal.textContent = totalRow ? formatFt(totalRow.total, { miles: true }) : "—";
+  els.profileTotalRank.textContent = totalRow ? `#${totalRow.rank}` : "";
+  els.btnOut.classList.toggle("hidden", !own);
+}
+
+function openProfile(uid, from) {
+  if (!uid) return;
+  audio.ui();
+  profileUid = uid;
+  profileFrom = from;
+  hide(els.title);
+  hide(els.result);
+  hide(els.board);
+  show(els.profile);
+  show(els.authBar);
+  hide(els.btnBoard);
+  renderProfile();
+  void refreshLeaders();
+}
+
+function closeProfile() {
+  audio.ui();
+  hide(els.profile);
+  if (profileFrom === "board") {
+    show(els.board);
+    hide(els.btnBoard);
+    renderBoard();
+    return;
+  }
+  returnHome();
+}
+
+function overlayOpen() {
+  return !els.board.classList.contains("hidden") || !els.profile.classList.contains("hidden");
 }
 
 function isUiButton(target) {
@@ -2381,12 +2666,11 @@ window.addEventListener("keydown", (e) => {
   if (state.mode === "pause") return;
   if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") {
     e.preventDefault();
-    if (state.mode === "title" && els.board.classList.contains("hidden")) startGame();
-    else if (state.mode === "result" && els.board.classList.contains("hidden")) startGame();
-    else state.holding = true;
+    if ((state.mode === "title" || state.mode === "result") && !overlayOpen()) startGame();
+    else if (state.mode === "play" || state.mode === "countdown") state.holding = true;
   }
-  if (e.code === "Enter" && (state.mode === "title" || state.mode === "result") && els.board.classList.contains("hidden")) startGame();
-  if (e.code === "KeyR" && state.mode === "result") startGame();
+  if (e.code === "Enter" && (state.mode === "title" || state.mode === "result") && !overlayOpen()) startGame();
+  if (e.code === "KeyR" && state.mode === "result" && !overlayOpen()) startGame();
 });
 
 window.addEventListener("keyup", (e) => {
@@ -2408,11 +2692,31 @@ els.btnRestart.addEventListener("click", startGame);
 els.btnExit.addEventListener("click", backToTitle);
 els.btnIn.addEventListener("click", () => void signInWithGoogle());
 els.btnSave.addEventListener("click", () => void signInWithGoogle());
-els.btnOut.addEventListener("click", () => void signOut());
-els.btnBoard.addEventListener("click", () => void openBoard());
+els.btnOut.addEventListener("click", () => {
+  void signOut();
+  closeProfile();
+});
+els.btnBoard.addEventListener("click", openBoard);
 els.btnBoardClose.addEventListener("click", closeBoard);
-els.tabBest.addEventListener("click", () => setBoardMetric("best"));
-els.tabTotal.addEventListener("click", () => setBoardMetric("total"));
+for (const id of BOARD_METRICS) els.tabs[id].addEventListener("click", () => setBoardMetric(id));
+els.boardList.addEventListener("click", (e) => {
+  const row = e.target.closest("li[data-uid]");
+  if (row) openProfile(row.dataset.uid, "board");
+});
+els.boardList.addEventListener("keydown", (e) => {
+  if (e.code !== "Enter" && e.code !== "Space") return;
+  const row = e.target.closest("li[data-uid]");
+  if (!row) return;
+  e.preventDefault();
+  e.stopPropagation();
+  openProfile(row.dataset.uid, "board");
+});
+els.authUser.addEventListener("click", () => {
+  if (!authState.user) return;
+  if (!els.profile.classList.contains("hidden") && profileUid === authState.user.uid) closeProfile();
+  else openProfile(authState.user.uid, els.board.classList.contains("hidden") ? "" : "board");
+});
+els.btnProfileClose.addEventListener("click", closeProfile);
 els.garage.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-car]");
   if (!btn) return;
@@ -2439,7 +2743,7 @@ audio.onMuteChange(syncMuteUi);
 syncMuteUi();
 
 function allowBoardScroll(target) {
-  return Boolean(target && target.closest && target.closest("#board-list"));
+  return Boolean(target && target.closest && target.closest("#board-list, #profile-medals"));
 }
 
 function isPinch(e) {
@@ -2530,9 +2834,19 @@ resize();
 syncAuthUi();
 onAuthChange((next) => {
   syncAuthUi();
-  if (next.user) void mergeCloudBest();
+  rerenderLeaders();
+  if (next.user) {
+    void mergeCloudBest();
+    announceMedal();
+  }
 });
 void startAuth();
+void loadMedals().then(onMedals, (error) => console.warn(error));
+void track("week", loadWeek());
+setInterval(() => {
+  if (syncWeekId()) void track("week", loadWeek({ force: true }));
+  if (state.mode === "title" || state.mode === "result") rerenderLeaders();
+}, 30000);
 
 let lampIndex = 0;
 setInterval(() => {

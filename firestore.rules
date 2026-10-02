@@ -22,6 +22,44 @@ service cloud.firestore {
         && data.total <= 100000000;
     }
 
+    // weekId is the Monday (YYYY-MM-DD) that starts a US Central week.
+    // Runs land only while that week is open, with 15 minutes of grace.
+    function weekOpen(weekId) {
+      let parts = weekId.split('-');
+      let start = timestamp.date(int(parts[0]), int(parts[1]), int(parts[2]));
+      return weekId.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && (start.toMillis() - 345600000) % 604800000 == 0
+        && request.time > start + duration.value(4, 'h')
+        && request.time < start + duration.value(174, 'h') + duration.value(15, 'm');
+    }
+
+    function validWeekRun(data) {
+      return data.keys().hasOnly(['best', 'lights', 'displayName', 'photoURL', 'at'])
+        && validBest(data)
+        && data.lights is int
+        && data.lights >= 0
+        && data.lights <= 1000
+        && data.photoURL is string
+        && data.photoURL.size() < 1000
+        && data.at is timestamp;
+    }
+
+    match /weeks/{weekId}/runs/{uid} {
+      allow read: if true;
+      allow create: if isOwner(uid)
+        && weekOpen(weekId)
+        && validWeekRun(request.resource.data)
+        && request.resource.data.at == request.time;
+      allow update: if isOwner(uid)
+        && weekOpen(weekId)
+        && validWeekRun(request.resource.data)
+        && (
+          (request.resource.data.best > resource.data.best && request.resource.data.at == request.time)
+          || (request.resource.data.best == resource.data.best && request.resource.data.at == resource.data.at)
+        );
+      allow delete: if false;
+    }
+
     match /users/{uid} {
       allow read: if true;
       allow create: if isOwner(uid) && validBest(request.resource.data);

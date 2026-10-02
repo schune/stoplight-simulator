@@ -1064,8 +1064,7 @@ button.ghost {
   min-width: 0;
 }
 
-.chip,
-.text-btn {
+.chip {
   width: auto;
   height: 36px;
   padding: 0 12px;
@@ -1086,18 +1085,61 @@ button.ghost {
   height: 14px;
 }
 
-.text-btn {
-  background: transparent;
-  color: var(--mute);
-  border: 0;
-  padding: 0 4px;
-}
-
 #auth-user {
+  width: auto;
+  max-width: none;
+  height: 36px;
   background: rgba(7, 8, 13, 0.62);
+  color: var(--cream);
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 4px 8px 4px 4px;
+  padding: 4px 12px 4px 4px;
+  box-shadow: none;
+  letter-spacing: normal;
+}
+
+#auth-user:hover {
+  transform: none;
+  background: rgba(18, 20, 28, 0.9);
+}
+
+.medal {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 11px;
+  height: 11px;
+  margin-top: 3px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff1b8 0 18%, #ffc01a 42%, #b77a06 100%);
+  box-shadow: 0 0 0 1px rgba(255, 192, 26, 0.35), 0 0 8px rgba(255, 192, 26, 0.45);
+  vertical-align: -1px;
+}
+
+.medal::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 9px;
+  width: 9px;
+  height: 5px;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, #ff2d4a 0 50%, #2f8fd8 50% 100%);
+  clip-path: polygon(0 0, 100% 0, 72% 100%, 28% 100%);
+}
+
+.medal-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+
+.medal-tag b {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--yellow);
 }
 
 #auth-photo {
@@ -1163,8 +1205,21 @@ button.ghost {
   padding: 8px 10px;
 }
 
+#board-list li {
+  cursor: pointer;
+}
+
 #board-list li.me {
   border-color: rgba(255, 192, 26, 0.45);
+}
+
+#board-list li.lead {
+  background: linear-gradient(90deg, rgba(255, 192, 26, 0.14), rgba(7, 8, 13, 0.55) 70%);
+  border-color: rgba(255, 192, 26, 0.6);
+}
+
+#board-list li.lead .rank {
+  color: var(--yellow);
 }
 
 #board-list img {
@@ -1182,12 +1237,126 @@ button.ghost {
 }
 
 #board-list .who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#board-list .nm {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+}
+
+.board-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 12px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--mute);
+}
+
+#board-ends {
+  color: var(--cream);
+}
+
+#board-last {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#profile {
+  justify-content: flex-start;
+  padding-top: calc(72px + var(--safe-top));
+}
+
+.profile-photo {
+  width: 76px;
+  height: 76px;
+  margin: 0 0 14px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #1a1c24;
+  border: 2px solid var(--line);
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+#profile h2 {
+  max-width: 100%;
+  font-size: clamp(30px, 10vw, 46px);
+  overflow-wrap: anywhere;
+}
+
+#profile-medal-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--yellow);
+}
+
+.profile-medals {
+  width: 100%;
+  max-width: 300px;
+  max-height: 168px;
+  margin: 4px 0 18px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.profile-medals li {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: 0.1em;
   font-weight: 600;
+  background: rgba(7, 8, 13, 0.55);
+  border: 1px solid rgba(255, 192, 26, 0.28);
+  border-radius: 12px;
+}
+
+.profile-medals .meters {
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--yellow);
+  letter-spacing: 0;
+}
+
+#profile-medal-empty {
+  margin: 4px 0 18px;
+}
+
+#profile .stats strong {
+  font-size: clamp(14px, 4.2vw, 17px);
+}
+
+.stat-sub {
+  display: block;
+  margin-top: 2px;
+  min-height: 13px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: var(--yellow);
+}
+
+#btn-profile-close {
+  margin-top: auto;
 }
 
 #board-list .meters {

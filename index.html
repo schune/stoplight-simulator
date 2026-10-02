@@ -182,11 +182,11 @@
             </svg>
             SIGN IN
           </button>
-          <div id="auth-user" class="hidden">
+          <button id="auth-user" class="hidden" type="button" aria-label="Your profile">
             <img id="auth-photo" alt="" referrerpolicy="no-referrer" />
             <span id="auth-name">DRIVER</span>
-            <button id="btn-out" class="text-btn" type="button">OUT</button>
-          </div>
+            <span id="auth-medals" class="medal-tag hidden"></span>
+          </button>
         </div>
       </div>
       <p id="auth-error" class="auth-error hidden"></p>
@@ -220,7 +220,7 @@
             <span class="car-label">SIGN IN</span>
           </button>
         </div>
-        <p class="controls-hint">LIGHTS ARE RANDOM EVERY RUN</p>
+        <p id="title-week" class="controls-hint">LIGHTS ARE RANDOM EVERY RUN</p>
       </section>
 
       <section id="result" class="panel hidden" aria-hidden="true">
@@ -266,14 +266,46 @@
 
       <section id="board" class="panel hidden" aria-hidden="true">
         <h2>LEADERBOARD</h2>
-        <p class="flavor">Sign in to save your score on the leaderboard.</p>
+        <p id="board-flavor" class="flavor">Sign in to save your score on the leaderboard.</p>
         <div id="board-tabs" class="board-tabs" role="tablist" aria-label="Leaderboard ranking">
-          <button id="tab-best" type="button" role="tab" aria-selected="true">BEST</button>
+          <button id="tab-week" type="button" role="tab" aria-selected="true">WEEKLY</button>
+          <button id="tab-best" type="button" role="tab" aria-selected="false">ALL TIME</button>
           <button id="tab-total" type="button" role="tab" aria-selected="false">TOTAL</button>
+        </div>
+        <div id="board-meta" class="board-meta hidden">
+          <span id="board-ends"></span>
+          <span id="board-last"></span>
         </div>
         <ol id="board-list"></ol>
         <p id="board-empty" class="flavor">No ranked runs yet.</p>
         <button id="btn-board-close" class="ghost" type="button">BACK</button>
+      </section>
+
+      <section id="profile" class="panel hidden" aria-hidden="true">
+        <img id="profile-photo" class="profile-photo" alt="" referrerpolicy="no-referrer" />
+        <h2 id="profile-name">DRIVER</h2>
+        <p id="profile-medal-count" class="eyebrow">NO MEDALS YET</p>
+        <ol id="profile-medals" class="profile-medals"></ol>
+        <p id="profile-medal-empty" class="flavor">Finish a week with the top run to earn a medal.</p>
+        <div class="stats">
+          <div>
+            <span class="hud-label">THIS WEEK</span>
+            <strong id="profile-week">—</strong>
+            <span id="profile-week-rank" class="stat-sub"></span>
+          </div>
+          <div>
+            <span class="hud-label">ALL TIME</span>
+            <strong id="profile-best">—</strong>
+            <span id="profile-best-rank" class="stat-sub"></span>
+          </div>
+          <div>
+            <span class="hud-label">TOTAL</span>
+            <strong id="profile-total">—</strong>
+            <span id="profile-total-rank" class="stat-sub"></span>
+          </div>
+        </div>
+        <button id="btn-profile-close" type="button">BACK</button>
+        <button id="btn-out" class="ghost hidden" type="button">SIGN OUT</button>
       </section>
 
       <section id="pause" class="panel hidden" aria-hidden="true">
