@@ -678,6 +678,14 @@ body {
   animation-duration: 1.1s;
 }
 
+#toast.luke {
+  font-size: 30px;
+  letter-spacing: 0.16em;
+  color: #ffb070;
+  text-shadow: 0 0 24px rgba(255, 150, 80, 0.5);
+  animation-duration: 1.6s;
+}
+
 #toast.egg {
   font-size: 22px;
   letter-spacing: 0.08em;

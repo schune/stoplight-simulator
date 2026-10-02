@@ -21,6 +21,7 @@ const BOARD_METRICS = ["week", "best", "total"];
 const SHARE_URL = "https://stoplightsimulator.com/";
 const GOLD_ODDS = 0.075;
 const GOLD_FEET = 100;
+const LUKE_ODDS = 1 / 25;
 const WAVE_TIERS = [
   { min: 10, color: "#ff5ad5", name: "rainbow" },
   { min: 7, color: "#ff5ad5", name: "hot" },
@@ -532,6 +533,7 @@ function sharePayload(run) {
 async function shareRun() {
   audio.ui();
   const payload = sharePayload(state.lastRun);
+  if (state.lastRun?.luke) payload.text = `LUKE MODE. ${payload.text}`;
   const joined = `${payload.text}\n${payload.url}`;
   try {
     if (navigator.share) {
@@ -732,6 +734,8 @@ function resetRun(mode) {
   state.leadCrossed = false;
   state.lastTick = 0;
   state.redBy = -1;
+  state.luke = false;
+  state.lukeKick = 0;
   syncWave();
 }
 
@@ -810,6 +814,20 @@ function rollColorblind() {
     return;
   }
   state.colorblindAt = 30;
+}
+
+let lukeImg = null;
+
+function summonLuke() {
+  state.luke = true;
+  if (!lukeImg) {
+    lukeImg = new Image();
+    lukeImg.src = "/luke.png";
+  }
+}
+
+function rollLuke() {
+  if (Math.random() < LUKE_ODDS) summonLuke();
 }
 
 function beginColorblind() {
@@ -925,6 +943,7 @@ function passLight(light) {
     audio.jackpot();
     toast(`+${GOLD_FEET} FT`);
     glowOdometer("#ffc01a");
+    state.lukeKick = 1;
     carSparks(["#ffc01a", "#fff1b8"], 10, 0.6);
     rumble([12, 20, 12, 40]);
     els.dist.classList.remove("tick");
@@ -981,6 +1000,7 @@ function trackGoals() {
     toast("NEW BEST");
     audio.best();
     glowOdometer("#ffc01a");
+    state.lukeKick = 1;
     rumble([20, 40, 30]);
   }
   if (!state.leadCrossed && state.weekLead > 30 && runScore() > state.weekLead) {
@@ -1186,6 +1206,7 @@ function endRun(reason) {
     reason,
     remaining: Math.max(0, state.remaining),
     week: weekId(),
+    luke: state.luke,
   };
   hide(els.hud);
   hide(els.pedalWrap);
@@ -1286,6 +1307,7 @@ function endRun(reason) {
   els.titleBest.textContent = String(toFeet(best));
   if (timed && !rec.isNewBest && rec.rank === 0) flashScreen("good", 420);
   els.resultKicker.classList.toggle("near", red && state.redBy >= 0 && state.redBy < 1);
+  if (state.luke) els.resultKicker.textContent = `LUKE MODE · ${els.resultKicker.textContent}`;
   els.resultFlavor.classList.remove("chase");
   state.lastRun.flavor = els.resultFlavor.textContent;
   applyChase(state.lastRun);
@@ -1338,11 +1360,12 @@ function toast(text, kind = "") {
   els.toast.textContent = text;
   els.toast.classList.toggle("place", kind === "place");
   els.toast.classList.toggle("egg", kind === "egg");
+  els.toast.classList.toggle("luke", kind === "luke");
   els.toast.classList.remove("hidden");
   els.toast.style.animation = "none";
   void els.toast.offsetWidth;
   els.toast.style.animation = "";
-  const ms = kind === "egg" ? 1600 : kind === "place" ? 1100 : 700;
+  const ms = kind === "egg" || kind === "luke" ? 1600 : kind === "place" ? 1100 : 700;
   setTimeout(() => {
     if (els.toast.textContent === text) els.toast.classList.add("hidden");
   }, ms);
@@ -1364,6 +1387,7 @@ function updatePlay(dt) {
       if (shown === "GO") {
         state.kick = 0;
         flashScreen("go", 220);
+        if (state.luke) setTimeout(() => state.luke && state.mode === "play" && toast("LUKE MODE", "luke"), 450);
       }
     }
     if (state.countdown <= 0) {
@@ -1510,6 +1534,32 @@ function drawSky() {
     ctx.fillStyle = edge;
     ctx.fillRect(0, 0, width, height);
   }
+}
+
+function drawLuke() {
+  if (!state.luke || state.mode === "title" || !lukeImg?.complete || !lukeImg.naturalWidth) return;
+  const elapsed = RUN_SECONDS - state.remaining;
+  const rise = 1 - Math.pow(1 - clamp(elapsed / 14, 0, 1), 3);
+  state.lukeKick = Math.max(0, state.lukeKick - 1 / 40);
+  const kick = Math.sin(state.lukeKick * Math.PI) * state.lukeKick;
+  const h = Math.min(horizon * 0.62, width * 0.55 * (lukeImg.naturalHeight / lukeImg.naturalWidth));
+  const w = h * (lukeImg.naturalWidth / lukeImg.naturalHeight);
+  const bob = REDUCE ? 0 : Math.sin(state.time * 1.4) * 3;
+  const top = lerp(horizon - h * 0.62, horizon - h * 1.1, rise) + bob - kick * 14;
+  const cx = width / 2;
+  const cy = top + h * 0.5;
+  const glow = ctx.createRadialGradient(cx, cy, h * 0.1, cx, cy, h * 0.85);
+  glow.addColorStop(0, `rgba(255, 170, 90, ${0.28 * rise})`);
+  glow.addColorStop(1, "rgba(255, 140, 70, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(cx - h, cy - h, h * 2, h * 2);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(REDUCE ? 0 : Math.sin(state.time * 0.7) * 0.04);
+  ctx.scale(1 + kick * 0.14, 1 + kick * 0.14);
+  ctx.globalAlpha = 0.94;
+  ctx.drawImage(lukeImg, -w / 2, -h / 2, w, h);
+  ctx.restore();
 }
 
 function drawCity() {
@@ -2354,6 +2404,7 @@ function render() {
     state.shake *= 0.86;
   }
   drawSky();
+  drawLuke();
   drawCity();
   drawRoad();
   drawFootMarkers();
@@ -2459,6 +2510,7 @@ function startGame() {
   resetRun("countdown");
   rollOmen();
   rollColorblind();
+  rollLuke();
   const me = authState.user?.uid;
   const leader = week.id === weekId() ? rankWeek(week.rows)[0] : null;
   state.weekLead = leader && leader.uid !== me ? leader.best : 0;
@@ -3173,6 +3225,7 @@ if (import.meta.env.DEV) {
     state.car = CAR_IDS.includes(id) ? id : "taxi";
     audio.setCar(state.car);
   };
+  window.__luke = summonLuke;
   window.__gold = () => {
     for (const light of state.lights) light.lucky = true;
   };
