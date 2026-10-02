@@ -553,19 +553,17 @@ body {
 .wave {
   --wave: #22e38a;
   position: absolute;
-  left: 50%;
-  top: calc(122px + var(--safe-top));
+  left: 16px;
+  top: calc(94px + var(--safe-top));
   z-index: 4;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 6px 16px 7px;
-  transform: translateX(-50%);
-  border-radius: 14px;
-  background: rgba(7, 8, 13, 0.6);
-  border: 1px solid var(--wave);
-  box-shadow: 0 0 22px color-mix(in srgb, var(--wave) 45%, transparent), inset 0 0 14px color-mix(in srgb, var(--wave) 22%, transparent);
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px 5px;
+  transform-origin: left center;
+  border-radius: 999px;
+  background: rgba(7, 8, 13, 0.55);
+  border: 1px solid color-mix(in srgb, var(--wave) 55%, transparent);
   color: var(--wave);
   pointer-events: none;
   transition: border-color 0.2s ease, color 0.2s ease;
@@ -573,18 +571,17 @@ body {
 
 .wave strong {
   font-family: Anton, sans-serif;
-  font-size: 30px;
+  font-size: 17px;
   line-height: 1;
   letter-spacing: 0.04em;
-  text-shadow: 0 0 18px var(--wave);
 }
 
 .wave span {
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.22em;
   color: var(--cream);
-  opacity: 0.85;
+  opacity: 0.7;
 }
 
 .wave.pop {
@@ -604,9 +601,9 @@ body {
 }
 
 @keyframes wavePop {
-  0% { transform: translateX(-50%) scale(1); }
-  40% { transform: translateX(-50%) scale(1.28); }
-  100% { transform: translateX(-50%) scale(1); }
+  0% { transform: scale(1); }
+  40% { transform: scale(1.12); }
+  100% { transform: scale(1); }
 }
 
 @keyframes waveHue {
@@ -615,10 +612,10 @@ body {
 }
 
 @keyframes waveLost {
-  0% { opacity: 1; transform: translateX(-50%) scale(1); filter: grayscale(0); }
-  30% { transform: translateX(calc(-50% - 6px)) scale(0.96); filter: grayscale(1); }
-  60% { transform: translateX(calc(-50% + 6px)) scale(0.92); }
-  100% { opacity: 0; transform: translateX(-50%) scale(0.8) translateY(10px); filter: grayscale(1); }
+  0% { opacity: 1; transform: none; filter: grayscale(0); }
+  30% { transform: translateX(-4px) scale(0.96); filter: grayscale(1); }
+  60% { transform: translateX(4px) scale(0.92); }
+  100% { opacity: 0; transform: scale(0.85) translateY(6px); filter: grayscale(1); }
 }
 
 .flavor.chase {
