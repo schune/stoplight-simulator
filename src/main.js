@@ -778,7 +778,7 @@ function rumble(pattern) {
 }
 
 function flashScreen(kind = "bad", ms = 280) {
-  els.flash.className = ["go", "good", "omen", "best", "tint"].includes(kind) ? `${kind} on` : "on";
+  els.flash.className = ["go", "good", "omen", "best"].includes(kind) ? `${kind} on` : "on";
   setTimeout(() => {
     els.flash.className = "";
   }, ms);
@@ -877,29 +877,19 @@ function syncWave(pop = false) {
   els.wave.style.setProperty("--wave", tier.color);
   els.waveN.textContent = `×${state.wave}`;
   if (pop) {
-    els.wave.classList.remove("pop");
+    els.wave.classList.remove("pop", "big");
     void els.wave.offsetWidth;
     els.wave.classList.add("pop");
+    if (pop === "big") els.wave.classList.add("big");
   }
 }
 
-function flashTint(color, ms = 260) {
-  els.flash.style.setProperty("--tint", hexA(color, 0.34));
-  flashScreen("tint", ms);
-}
-
-function shower(colors, n, { y = horizon - 20, spread = width * 0.5, g = 320 } = {}) {
-  if (REDUCE) return;
-  for (let i = 0; i < n; i++) {
-    spark(width / 2 + rand(-spread, spread), y + rand(-30, 10), {
-      vx: rand(-60, 60),
-      vy: rand(-220, -40),
-      life: rand(0.7, 1.4),
-      size: rand(2, 4.5),
-      color: pick(colors),
-      g,
-    });
-  }
+function glowOdometer(color) {
+  const odo = els.dist.parentElement;
+  odo.style.setProperty("--glow", color);
+  odo.classList.remove("glow");
+  void odo.offsetWidth;
+  odo.classList.add("glow");
 }
 
 function carSparks(colors, n, power = 1) {
@@ -922,31 +912,26 @@ function carSparks(colors, n, power = 1) {
 function passLight(light) {
   state.wave += 1;
   state.waveBest = Math.max(state.waveBest, state.wave);
-  const tier = waveTier();
   audio.pass(state.wave);
-  rumble(state.wave >= 4 ? [8, 20, 10] : 8);
-  if (state.wave >= 2) carSparks([tier.color, "#f4efe4"], Math.min(28, 6 + state.wave * 2), 0.7 + Math.min(state.wave, 10) * 0.05);
-  if (state.wave >= 3) flashTint(tier.color, 200);
-  if (state.wave % 5 === 0) {
+  rumble(8);
+  const milestone = state.wave % 5 === 0;
+  if (milestone) {
     audio.waveUp(state.wave);
-    toast(`GREEN WAVE ×${state.wave}`);
-    flashTint(tier.color, 420);
-    shower([tier.color, "#f4efe4", "#ffc01a"], 34);
-    rumble([14, 30, 14, 30, 40]);
+    rumble([12, 30, 12]);
   }
   if (light?.lucky) {
     state.gold += 1;
     state.bonus += GOLD_FEET / FT_PER_M;
     audio.jackpot();
     toast(`+${GOLD_FEET} FT`);
-    flashScreen("best", 360);
-    shower(["#ffc01a", "#fff1b8", "#ffdc5e", "#f4efe4"], 40, { g: 380 });
-    rumble([12, 20, 12, 20, 12, 60]);
+    glowOdometer("#ffc01a");
+    carSparks(["#ffc01a", "#fff1b8"], 10, 0.6);
+    rumble([12, 20, 12, 40]);
     els.dist.classList.remove("tick");
     void els.dist.offsetWidth;
     els.dist.classList.add("tick");
   }
-  syncWave(true);
+  syncWave(milestone ? "big" : true);
 }
 
 function breakWave() {
@@ -968,16 +953,12 @@ function closeCall(left) {
   const razor = left < 0.25;
   toast(razor ? "RAZOR CLOSE" : "CLOSE CALL", razor ? "" : "place");
   audio.close(razor);
-  flashTint(COLORS.yellow, razor ? 320 : 220);
-  carSparks(["#ffc01a", "#fff1b8"], razor ? 26 : 14, razor ? 1.2 : 0.9);
-  rumble(razor ? [16, 20, 16, 20, 30] : [12, 20, 12]);
+  rumble(razor ? [16, 20, 16] : 12);
 }
 
 function perfectStop() {
   toast("PERFECT STOP", "place");
   audio.perfect();
-  flashTint(COLORS.green, 260);
-  carSparks(["#22e38a", "#f4efe4"], 16, 0.6);
   rumble([10, 30, 10]);
 }
 
@@ -999,17 +980,15 @@ function trackGoals() {
     state.bestCrossed = true;
     toast("NEW BEST");
     audio.best();
-    flashScreen("best", 480);
-    shower(["#ffc01a", "#f4efe4", "#22e38a", "#ff5ad5"], 56);
-    rumble([20, 40, 30, 70]);
+    glowOdometer("#ffc01a");
+    rumble([20, 40, 30]);
   }
   if (!state.leadCrossed && state.weekLead > 30 && runScore() > state.weekLead) {
     state.leadCrossed = true;
     toast(authState.user ? "WEEKLY LEAD" : "BEAT #1 THIS WEEK");
     audio.lead();
-    flashTint("#ff5ad5", 480);
-    shower(["#ff5ad5", "#ffc01a", "#f4efe4"], 56);
-    rumble([20, 40, 30, 70]);
+    glowOdometer("#ff5ad5");
+    rumble([20, 40, 30]);
   }
   const sec = Math.ceil(state.remaining);
   if (sec <= 5 && sec >= 1 && sec !== state.lastTick) {
@@ -2319,10 +2298,8 @@ function updateParticles(dt) {
 
 function drawWaveGlow() {
   if (state.wave < 4 || (state.mode !== "play" && state.mode !== "crash")) return;
-  const tier = waveTier();
-  const beat = 0.5 + Math.sin(state.time * (state.wave >= 10 ? 9 : 6)) * 0.5;
-  const strength = Math.min(1, (state.wave - 3) / 7) * (0.18 + beat * 0.16);
-  const hue = state.wave >= 10 ? `hsl(${Math.round((state.time * 160) % 360)}, 100%, 62%)` : tier.color;
+  const hue = waveTier().color;
+  const strength = Math.min(1, (state.wave - 3) / 7) * 0.16;
   const edge = Math.max(26, width * 0.12);
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
