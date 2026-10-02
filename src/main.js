@@ -1428,18 +1428,16 @@ function updatePlay(dt) {
           return;
         }
         light.legal = true;
+        state.cleared += 1;
         if (color === "yellow") {
           const left = yellowLeft(light, state.time);
           if (left < 0.6) closeCall(left);
         }
+        passLight(light);
       }
     }
 
-    if (rear > clear) {
-      light.passed = true;
-      state.cleared += 1;
-      passLight(light);
-    }
+    if (rear > clear) light.passed = true;
   }
 
   const thousands = Math.floor(toFeet(runScore()) / 1000);
@@ -1740,7 +1738,7 @@ function drawLight(light) {
   roundRect(bx, by, boxW, boxH, Math.max(2, 6 * (1 - p.t)));
   ctx.fill();
   ctx.stroke();
-  if (light.lucky) drawGoldTrim(p.x, by, boxW, boxH, p.t);
+  if (light.lucky) drawGoldTrim(p.x, by, boxW, boxH, p.t, light.side);
 
   const r = Math.max(2.1, boxW * 0.2);
   const lamps = gray
@@ -1781,7 +1779,7 @@ function drawLight(light) {
   ctx.restore();
 }
 
-function drawGoldTrim(cx, by, boxW, boxH, t) {
+function drawGoldTrim(cx, by, boxW, boxH, t, side) {
   const pad = Math.max(1.2, lerp(4, 1.2, t));
   ctx.save();
   ctx.strokeStyle = "#ffc01a";
@@ -1791,17 +1789,18 @@ function drawGoldTrim(cx, by, boxW, boxH, t) {
   roundRect(cx - boxW / 2 - pad, by - pad, boxW + pad * 2, boxH + pad * 2, Math.max(3, 8 * (1 - t)));
   ctx.stroke();
   ctx.shadowBlur = 0;
-  const size = Math.round(Math.min(15, boxW * 0.62));
-  if (size >= 8) {
-    ctx.fillStyle = "#ffc01a";
-    ctx.font = `${size}px Anton, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(`+${GOLD_FEET}`, cx, by - pad - 2);
-  }
   const orbitX = boxW * 0.9 + pad;
   const orbitY = boxH * 0.58 + pad;
   const cy = by + boxH / 2;
+  const size = Math.round(Math.min(15, boxW * 0.62));
+  if (size >= 8) {
+    const dir = side > 0 ? -1 : 1;
+    ctx.fillStyle = "#ffc01a";
+    ctx.font = `${size}px Anton, sans-serif`;
+    ctx.textAlign = dir > 0 ? "left" : "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`+${GOLD_FEET}`, cx + dir * (orbitX + 4), cy);
+  }
   for (let i = 0; i < 3; i++) {
     const a = state.time * 1.6 + (i / 3) * Math.PI * 2;
     const twinkle = 0.55 + Math.sin(state.time * 6 + i * 2.1) * 0.45;
