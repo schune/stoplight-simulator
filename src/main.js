@@ -2591,7 +2591,8 @@ function renderProfile() {
     : "No weekly wins yet.";
   els.profileWeek.textContent = weekRow ? formatFt(weekRow.best) : "—";
   els.profileWeekRank.textContent = weekRow ? `#${weekRow.rank}` : "";
-  const best = own ? Math.max(getBest(), bestRow?.best || 0) : bestRow?.best;
+  const marked = boardRows.some((row) => row.uid === uid && row.voided);
+  const best = own && !marked ? Math.max(getBest(), bestRow?.best || 0) : bestRow?.best;
   els.profileBest.textContent = best ? formatFt(best) : "—";
   els.profileBestRank.textContent = bestRow ? `#${bestRow.rank}` : "";
   els.profileTotal.textContent = totalRow ? formatFt(totalRow.total, { miles: true }) : "—";

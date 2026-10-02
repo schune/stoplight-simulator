@@ -71,9 +71,17 @@ service cloud.firestore {
 
     match /board/{uid} {
       allow read: if true;
-      allow create: if isOwner(uid) && validBoardScore(request.resource.data);
+      allow create: if isOwner(uid)
+        && validBoardScore(request.resource.data)
+        && !("voidBest" in request.resource.data);
       allow update: if isOwner(uid)
         && validBoardScore(request.resource.data)
+        && request.resource.data.get("voidBest", null) == resource.data.get("voidBest", null)
+        && (!("cleanBest" in request.resource.data) || (
+          request.resource.data.cleanBest is int
+          && request.resource.data.cleanBest <= 5000
+          && request.resource.data.cleanBest >= resource.data.get("cleanBest", 0)
+        ))
         && request.resource.data.best >= resource.data.best
         && (!("total" in resource.data) || request.resource.data.total >= resource.data.total);
       allow delete: if false;

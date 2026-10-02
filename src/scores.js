@@ -28,19 +28,23 @@ function withTimeout(promise, ms, label) {
 function readBoardRow(id, data) {
   const best = Number(data.best) || 0;
   const storedTotal = Number(data.total);
+  const voidBest = Number(data.voidBest) || 0;
+  const voided = voidBest > 0 && best <= voidBest;
   return {
     uid: id,
     name: data.displayName || "Night driver",
     photoUrl: data.photoURL || "",
-    best,
+    best: voided ? Number(data.cleanBest) || 0 : best,
     total: Number.isFinite(storedTotal) && storedTotal > 0 ? storedTotal : best,
     lights: Number(data.bestLights) || 0,
+    voided,
   };
 }
 
 export function rankBoard(rows, metric) {
   const key = metric === "total" ? "total" : "best";
   return [...rows]
+    .filter((row) => key !== "best" || !row.voided || row.best > 0)
     .sort((a, b) => (Number(b[key]) || 0) - (Number(a[key]) || 0) || String(a.name).localeCompare(String(b.name)))
     .map((row, index) => ({
       ...row,
@@ -197,6 +201,10 @@ export async function saveRun(user, { distance, lights, reason, localBest }) {
     100000000,
     reason === "sync" ? Math.max(baseTotal, Math.round(Number(localBest) || 0)) : baseTotal + runDist
   );
+  const prevClean = Math.round(Number(prev?.cleanBest) || 0);
+  const clean = prev?.voidBest
+    ? { cleanBest: Math.min(5000, reason === "sync" ? prevClean : Math.max(prevClean, runDist)) }
+    : {};
   await withTimeout(
     setDoc(
       ref,
@@ -205,6 +213,7 @@ export async function saveRun(user, { distance, lights, reason, localBest }) {
         photoURL: user.photoUrl || "",
         best,
         total,
+        ...clean,
         bestLights: fromThisRun ? Math.round(Number(lights) || 0) : Math.round(Number(prev?.bestLights) || 0),
         lastDistance: runDist,
         lastLights: Math.round(Number(lights) || 0),
